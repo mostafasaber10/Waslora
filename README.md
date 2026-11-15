@@ -39,6 +39,17 @@ powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 
 The regression suite covers PCM 8/16-bit and float conversion, stereo downmixing, direct-link and platform-page handling, fixed-length and chunked file uploads, app-to-native bridge wiring, laptop-page syntax, and MP3 worker output.
 
+## GitHub and releases
+
+This repository is prepared for Git LFS because the embedded Android AAR files are larger than GitHub's normal single-file limit. After creating an empty GitHub repository, run:
+
+```powershell
+git remote add origin https://github.com/USERNAME/Waslora.git
+git push -u origin main
+```
+
+Install Git LFS before cloning or pushing. The Android APK is intentionally ignored from source control; publish it as a GitHub Release asset after running `build.ps1`. GitHub is the place for source code, issues, and release notes. Android users can download the signed test APK from Releases. iPhone users need TestFlight or the App Store; a GitHub repository alone cannot install an iOS app on their phones.
+
 ## Third-party notice
 
 The embedded platform downloader (`youtubedl-android`, yt-dlp, and FFmpeg) is GPL-3.0; the full license and notices are included in `app/src/main/assets/licenses`. Anyone redistributing this build should review and follow GPL-3.0 obligations. The MP3 encoder is `lamejs` 1.2.1, bundled as the separate asset `app/src/main/assets/lame.min.js`. Its package metadata declares LGPL-3.0; the packaged project notice is in `vendor/LAME-LICENSE.txt`, and the source package is retained under `vendor/unpacked/package`. See the [upstream project](https://github.com/zhuker/lamejs) and [GNU LGPL-3.0 text](https://www.gnu.org/licenses/lgpl-3.0.en.html).
