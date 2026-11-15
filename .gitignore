@@ -29,3 +29,4 @@ ios/Waslora.xcodeproj/project.xcworkspace/xcuserdata/
 *.mobileprovision
 *.cer
 *.keystore
+*.jks

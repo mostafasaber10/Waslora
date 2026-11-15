@@ -1,7 +1,14 @@
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
-$AndroidSdk = 'C:\Users\EL MOSTAWRED MF\AppData\Local\Android\Sdk'
-$AndroidPlatform = Join-Path $AndroidSdk 'platforms\android-35\android.jar'
+$AndroidPlatformVersion = if ($env:WASLORA_ANDROID_PLATFORM) { $env:WASLORA_ANDROID_PLATFORM } else { '35' }
+$SdkCandidates = @($env:ANDROID_SDK_ROOT, $env:ANDROID_HOME)
+if ($env:LOCALAPPDATA) { $SdkCandidates += (Join-Path $env:LOCALAPPDATA 'Android\Sdk') }
+$SdkCandidates += 'C:\Users\EL MOSTAWRED MF\AppData\Local\Android\Sdk'
+$AndroidSdk = $SdkCandidates | Where-Object {
+    $_ -and (Test-Path -LiteralPath (Join-Path $_ "platforms\android-$AndroidPlatformVersion\android.jar"))
+} | Select-Object -First 1
+if (-not $AndroidSdk) { throw "Android SDK Platform $AndroidPlatformVersion was not found. Set ANDROID_SDK_ROOT to your Android SDK folder." }
+$AndroidPlatform = Join-Path $AndroidSdk "platforms\android-$AndroidPlatformVersion\android.jar"
 $JdkCandidates = @()
 if ($env:JAVA_HOME) { $JdkCandidates += $env:JAVA_HOME }
 $BuildCache = Join-Path $ProjectRoot '.build-cache'

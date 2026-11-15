@@ -1,9 +1,23 @@
+param(
+    [switch]$Release,
+    [string]$VersionName = '0.3.0',
+    [int]$VersionCode = 4
+)
+
 $ErrorActionPreference = 'Stop'
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$AndroidSdk = 'C:\Users\EL MOSTAWRED MF\AppData\Local\Android\Sdk'
-$AndroidPlatform = Join-Path $AndroidSdk 'platforms\android-35\android.jar'
-$BuildTools = Join-Path $AndroidSdk 'build-tools\36.0.0'
+$AndroidPlatformVersion = if ($env:WASLORA_ANDROID_PLATFORM) { $env:WASLORA_ANDROID_PLATFORM } else { '35' }
+$AndroidBuildToolsVersion = if ($env:WASLORA_ANDROID_BUILD_TOOLS) { $env:WASLORA_ANDROID_BUILD_TOOLS } else { '36.0.0' }
+$SdkCandidates = @($env:ANDROID_SDK_ROOT, $env:ANDROID_HOME)
+if ($env:LOCALAPPDATA) { $SdkCandidates += (Join-Path $env:LOCALAPPDATA 'Android\Sdk') }
+$SdkCandidates += 'C:\Users\EL MOSTAWRED MF\AppData\Local\Android\Sdk'
+$AndroidSdk = $SdkCandidates | Where-Object {
+    $_ -and (Test-Path -LiteralPath (Join-Path $_ "platforms\android-$AndroidPlatformVersion\android.jar"))
+} | Select-Object -First 1
+if (-not $AndroidSdk) { throw "Android SDK Platform $AndroidPlatformVersion was not found. Set ANDROID_SDK_ROOT to your Android SDK folder." }
+$AndroidPlatform = Join-Path $AndroidSdk "platforms\android-$AndroidPlatformVersion\android.jar"
+$BuildTools = Join-Path $AndroidSdk "build-tools\$AndroidBuildToolsVersion"
 $StudioJdk = 'C:\Program Files\Android\Android Studio\jbr'
 $JdkCandidates = @()
 foreach ($candidate in @($env:JAVA_HOME, $env:ANDROID_STUDIO_JDK, $StudioJdk)) {
@@ -27,6 +41,9 @@ foreach ($candidate in $JdkCandidates) {
 }
 if (-not $JdkHome) {
     throw 'A complete JDK 17 or newer is required. Set JAVA_HOME to its installation folder; the Android Studio runtime on this computer is incomplete.'
+}
+if ($VersionCode -lt 1 -or $VersionName -notmatch '^[0-9A-Za-z][0-9A-Za-z.+-]*$') {
+    throw 'VersionName must be a simple version string and VersionCode must be a positive integer.'
 }
 $JdkBin = Join-Path $JdkHome 'bin'
 $Output = Join-Path $ProjectRoot 'out'
@@ -65,7 +82,7 @@ foreach ($generated in @('classes','dex')) {
     $generatedPath = Join-Path $Output $generated
     if (Test-Path -LiteralPath $generatedPath) { Remove-Item -LiteralPath $generatedPath -Recurse -Force }
 }
-foreach ($generated in @('resources.zip','classes.jar','Waslora-unsigned.apk','Waslora-aligned.apk','Waslora-debug.apk')) {
+foreach ($generated in @('resources.zip','classes.jar','Waslora-unsigned.apk','Waslora-aligned.apk','Waslora-debug.apk',"Waslora-v$VersionName.apk")) {
     $generatedPath = Join-Path $Output $generated
     if (Test-Path -LiteralPath $generatedPath) { Remove-Item -LiteralPath $generatedPath -Force }
 }
@@ -90,7 +107,7 @@ $GeneratedJava = Join-Path $Output 'generated-java'
 if (Test-Path -LiteralPath $GeneratedJava) { Remove-Item -LiteralPath $GeneratedJava -Recurse -Force }
 New-Item -ItemType Directory -Path $GeneratedJava -Force | Out-Null
 $UnsignedApk = Join-Path $Output 'Waslora-unsigned.apk'
-& $Aapt2 link -o $UnsignedApk -I $AndroidPlatform --manifest $Manifest -R $ResourceZip --java $GeneratedJava --extra-packages com.yausername.youtubedl_android --min-sdk-version 24 --target-sdk-version 35 --version-code 4 --version-name 0.3.0
+& $Aapt2 link -o $UnsignedApk -I $AndroidPlatform --manifest $Manifest -R $ResourceZip --java $GeneratedJava --extra-packages com.yausername.youtubedl_android --min-sdk-version 24 --target-sdk-version 35 --version-code $VersionCode --version-name $VersionName
 if ($LASTEXITCODE -ne 0) { throw 'aapt2 APK linking failed.' }
 
 $Sources = @(Get-ChildItem -LiteralPath (Join-Path $ProjectRoot 'app\src\main\java') -Filter '*.java' -Recurse | Select-Object -ExpandProperty FullName)
@@ -141,17 +158,31 @@ try {
 } finally { $Archive.Dispose() }
 
 $AlignedApk = Join-Path $Output 'Waslora-aligned.apk'
-$SignedApk = Join-Path $Output 'Waslora-debug.apk'
+$SignedApk = if ($Release) { Join-Path $Output "Waslora-v$VersionName.apk" } else { Join-Path $Output 'Waslora-debug.apk' }
 & $Zipalign -f 4 $UnsignedApk $AlignedApk
 if ($LASTEXITCODE -ne 0) { throw 'zipalign failed.' }
 
-$KeyStore = Join-Path $BuildCache 'debug.keystore'
-New-Item -ItemType Directory -Path $BuildCache -Force | Out-Null
-if (-not (Test-Path -LiteralPath $KeyStore)) {
-    & $Keytool -genkeypair -keystore $KeyStore -storepass android -keypass android -alias androiddebugkey -dname 'CN=Waslora Debug,O=Waslora,C=EG' -keyalg RSA -keysize 2048 -validity 10000
-    if ($LASTEXITCODE -ne 0) { throw 'Could not create the local debug signing key.' }
+$SignArguments = @('sign')
+if ($Release) {
+    $KeyStore = $env:WASLORA_RELEASE_KEYSTORE
+    $KeyAlias = $env:WASLORA_RELEASE_ALIAS
+    if (-not $KeyStore -or -not (Test-Path -LiteralPath $KeyStore)) { throw 'Set WASLORA_RELEASE_KEYSTORE to your private release keystore. Never commit this file.' }
+    if (-not $KeyAlias -or -not $env:WASLORA_RELEASE_STORE_PASSWORD -or -not $env:WASLORA_RELEASE_KEY_PASSWORD) {
+        throw 'Set WASLORA_RELEASE_ALIAS, WASLORA_RELEASE_STORE_PASSWORD, and WASLORA_RELEASE_KEY_PASSWORD before a release build.'
+    }
+    $SignArguments += @('--ks', $KeyStore, '--ks-key-alias', $KeyAlias,
+        '--ks-pass', 'env:WASLORA_RELEASE_STORE_PASSWORD', '--key-pass', 'env:WASLORA_RELEASE_KEY_PASSWORD')
+} else {
+    $KeyStore = Join-Path $BuildCache 'debug.keystore'
+    New-Item -ItemType Directory -Path $BuildCache -Force | Out-Null
+    if (-not (Test-Path -LiteralPath $KeyStore)) {
+        & $Keytool -genkeypair -keystore $KeyStore -storepass android -keypass android -alias androiddebugkey -dname 'CN=Waslora Debug,O=Waslora,C=EG' -keyalg RSA -keysize 2048 -validity 10000
+        if ($LASTEXITCODE -ne 0) { throw 'Could not create the local debug signing key.' }
+    }
+    $SignArguments += @('--ks', $KeyStore, '--ks-key-alias', 'androiddebugkey', '--ks-pass', 'pass:android', '--key-pass', 'pass:android')
 }
-& $ApkSigner sign --ks $KeyStore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out $SignedApk $AlignedApk
+$SignArguments += @('--out', $SignedApk, $AlignedApk)
+& $ApkSigner @SignArguments
 if ($LASTEXITCODE -ne 0) { throw 'APK signing failed.' }
 & $ApkSigner verify --verbose $SignedApk
 if ($LASTEXITCODE -ne 0) { throw 'APK signature verification failed.' }
