@@ -1,0 +1,10 @@
+Waslora includes the following GPL-3.0 components for on-device platform downloads:
+
+- youtubedl-android 0.18.1: https://github.com/JunkFood02/youtubedl-android
+- yt-dlp nightly 2026.08.30.232658: https://github.com/yt-dlp/yt-dlp
+- FFmpeg Android binaries distributed by youtubedl-android 0.18.1: https://github.com/JunkFood02/youtubedl-android
+
+The bundled yt-dlp executable SHA-256 is:
+3f1b267b4488f3aed3731a9e84a44011ca5569901868532e10ee11fd07d69707
+
+The full GNU General Public License version 3 is included as GPL-3.0.txt.

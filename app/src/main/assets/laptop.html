@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light"><title>Waslora · نقل الملفات</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#f4f6fb;color:#15203b;font:15px system-ui,"Segoe UI",sans-serif}header{background:#101832;color:#fff;padding:20px max(20px,calc((100% - 760px)/2));display:flex;align-items:center;gap:12px}header svg{width:44px;height:44px}header strong{font-size:20px}main{max-width:760px;margin:26px auto;padding:0 18px}.card{background:#fff;border:1px solid #e2e7f0;border-radius:20px;padding:20px;margin-bottom:16px;box-shadow:0 6px 25px #15203b08}h1{font-size:23px;margin:0 0 5px}p{color:#68738b;font-size:13px;line-height:1.7;margin:0 0 14px}.drop{border:2px dashed #b9c9d6;border-radius:16px;padding:24px;text-align:center;background:#f8fbfd}.drop.drag{border-color:#27b9aa;background:#e9fbf7}button,.pick{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 16px;border:0;border-radius:11px;background:#27b9aa;color:#082d35;font-weight:700;cursor:pointer}.pick input{display:none}.list{display:grid;gap:8px}.item{display:flex;align-items:center;gap:12px;border:1px solid #e2e7f0;border-radius:13px;padding:12px}.meta{flex:1;min-width:0}.meta strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.meta small{font-size:11px;color:#68738b}.download{color:#4459bf;background:#eef1ff;text-decoration:none;padding:9px 13px;border-radius:10px;font-weight:700;font-size:12px}.status{margin-top:10px;color:#176e67;font-size:12px}.empty{text-align:center;color:#68738b;padding:20px;border:1px dashed #d4dce8;border-radius:14px}@media(max-width:560px){main{margin-top:16px}.item{gap:8px}.download{padding:8px}}
+  </style>
+</head>
+<body>
+<header><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="118" fill="#101832"/><path d="M112 170h217c34 0 55 20 55 53v22m-34-11 34 38 34-38M400 342H183c-34 0-55-20-55-53v-22m34 11-34-38-34 38" fill="none" stroke="#51E0D2" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/><path d="M225 211l91 45-91 45z" fill="#FFD078"/></svg><strong>Waslora</strong></header>
+<main>
+  <section class="card"><h1>نقل مباشر بين اللابتوب والهاتف</h1><p>اختر ملفات لإرسالها إلى الهاتف. الملفات تنتقل عبر شبكة Wi‑Fi المحلية.</p><div id="drop" class="drop"><label class="pick">اختيار ملفات<input id="files" type="file" multiple></label><p id="uploadStatus" class="status">يمكنك أيضًا سحب الملفات وإفلاتها هنا.</p></div></section>
+  <section class="card"><h1>ملفات الهاتف</h1><p>نزّل أي ملف محفوظ في Waslora إلى هذا اللابتوب.</p><div id="list" class="list"><div class="empty">جارٍ تحميل الملفات…</div></div></section>
+</main>
+<script>
+(() => {
+  const base = location.pathname.endsWith('/') ? location.pathname : location.pathname + '/';
+  const list = document.getElementById('list'); const status = document.getElementById('uploadStatus');
+  const bytes = n => {const u=['بايت','KB','MB','GB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return `${n.toFixed(i?1:0)} ${u[i]}`};
+  async function refresh(){try{const r=await fetch(base+'api/files',{cache:'no-store'});const files=await r.json();list.replaceChildren();if(!files.length){list.innerHTML='<div class="empty">لا توجد ملفات على الهاتف بعد.</div>';return}for(const f of files){const row=document.createElement('div');row.className='item';const meta=document.createElement('div');meta.className='meta';const title=document.createElement('strong');title.textContent=f.name;const size=document.createElement('small');size.textContent=bytes(f.size);meta.append(title,size);const a=document.createElement('a');a.className='download';a.textContent='تنزيل';a.href=base+'file/'+encodeURIComponent(f.name);a.download=f.name;row.append(meta,a);list.append(row)}}catch(e){list.innerHTML='<div class="empty">تعذر الاتصال بالهاتف. تأكد أن صفحة النقل ما زالت تعمل.</div>'}}
+  function uploadOne(file){return new Promise((resolve,reject)=>{const request=new XMLHttpRequest();request.open('POST',base+'upload?name='+encodeURIComponent(file.name));request.setRequestHeader('Content-Type','application/octet-stream');request.upload.onprogress=e=>{if(e.lengthComputable)status.textContent=`جارٍ إرسال ${file.name}… ${Math.floor(e.loaded*100/e.total)}% · ${bytes(e.loaded)} من ${bytes(e.total)}`};request.onload=()=>{if(request.status<200||request.status>=300){reject(new Error(`HTTP ${request.status}`));return}let result={};try{result=JSON.parse(request.responseText)}catch(_){}resolve(result.name||file.name)};request.onerror=()=>reject(new Error('تعذر الاتصال بالهاتف'));request.ontimeout=()=>reject(new Error('انتهت مهلة الاتصال'));request.timeout=0;request.send(file)})}
+  async function upload(files){for(const file of files){status.textContent=`جارٍ إرسال ${file.name}… 0%`;try{const savedName=await uploadOne(file);status.textContent=`تم إرسال ${savedName} · ${bytes(file.size)}`}catch(e){status.textContent=`تعذر إرسال ${file.name}: ${e.message}`;break}}refresh()}
+  document.getElementById('files').addEventListener('change',e=>upload(e.target.files));
+  const drop=document.getElementById('drop');drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('drag')});drop.addEventListener('dragleave',()=>drop.classList.remove('drag'));drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('drag');upload(e.dataTransfer.files)});
+  refresh();setInterval(refresh,10000);
+})();
+</script>
+</body></html>

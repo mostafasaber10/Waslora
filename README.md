@@ -1,0 +1,44 @@
+# Waslora / وصلورا (0.3.0)
+
+Waslora is a clean Android implementation of the useful workflows identified in the two supplied APKs. The chosen name is a working product name; trademark and store-name availability have not been cleared. The vector logo is in `brand/logo.svg` and the Android icon is in `app/src/main/res/drawable/ic_waslora.xml`.
+
+## What is implemented
+
+- Direct HTTP/HTTPS media-file downloads. When the server advertises byte-range support, files of at least 16 MB are fetched over up to six parallel connections; interrupted sequential downloads can resume.
+- Public platform-link downloads through the embedded yt-dlp and FFmpeg engine. YouTube, Facebook, Instagram, TikTok, and other supported yt-dlp domains are processed on the phone; no Resolver or laptop service is required.
+- Video audio extraction to M4A or MP3. M4A copies a compatible AAC track without re-encoding and automatically decodes/re-encodes other supported audio codecs to AAC. MP3 decodes supported audio through Android MediaCodec and encodes it in a worker using the bundled `lamejs` library.
+- Two-way phone/laptop transfer over the same Wi-Fi network, using the active local-network address, a temporary tokenized URL, and a browser page served by the phone. The transfer service holds CPU/Wi-Fi locks only while the user runs the session; browser uploads show progress and accept both fixed-length and chunked HTTP bodies.
+- Completed downloads, conversions, and laptop uploads are copied to the public `Download/Waslora` folder on Android 10+, so they appear in the Files app. The app also offers open/share actions and can stage selected phone files for laptop download.
+- Android Share support for incoming links and video files.
+
+## Platform links
+
+A page link from YouTube, Facebook, Instagram, TikTok, or another supported platform is processed by the embedded yt-dlp engine. The engine does not use cookies, passwords, browser sessions, DRM keys, or private-content workarounds; private, login-only, signed, DRM-protected, or unavailable videos can still fail.
+
+## Build
+
+Requirements: Windows PowerShell, Android SDK Platform 35, Android Build Tools 36.0.0, and a complete JDK 17 or newer. Set `JAVA_HOME` to the JDK installation folder, then run from this directory:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+```
+
+The signed debug APK is written to `out\Waslora-debug.apk`. The stable local debug key is kept in `.build-cache/debug.keystore`, so repeated test builds retain the same signing identity. It is for testing only, not store release. The supplied APKs contain compiled code, not either app's original project, so this is a fresh implementation of their workflows rather than a source-level merge.
+
+## iPhone version
+
+An iOS SwiftUI project is included under `ios/Waslora.xcodeproj`. It provides direct-file downloads with background `URLSession`, a media library, M4A conversion through AVFoundation, and two-way Wi-Fi transfer. Open it on a Mac with Xcode 15 or newer, add an Apple Developer signing team, and test on a real iPhone. The iOS build intentionally accepts direct file URLs; App Store distribution of third-party platform-page downloading requires authorization from the relevant content platforms. MP3 encoding still needs a separately licensed encoder integrated into the Xcode target.
+
+This workspace includes a portable JDK 21 cache under `.build-cache`, which the build script detects automatically. The Java sources compile, DEX is generated, and APK signing and alignment are checked by the build script. The APK bundles the yt-dlp/Python and FFmpeg native engine, so its size is substantially larger than a UI-only build.
+
+## Checks
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
+```
+
+The regression suite covers PCM 8/16-bit and float conversion, stereo downmixing, direct-link and platform-page handling, fixed-length and chunked file uploads, app-to-native bridge wiring, laptop-page syntax, and MP3 worker output.
+
+## Third-party notice
+
+The embedded platform downloader (`youtubedl-android`, yt-dlp, and FFmpeg) is GPL-3.0; the full license and notices are included in `app/src/main/assets/licenses`. Anyone redistributing this build should review and follow GPL-3.0 obligations. The MP3 encoder is `lamejs` 1.2.1, bundled as the separate asset `app/src/main/assets/lame.min.js`. Its package metadata declares LGPL-3.0; the packaged project notice is in `vendor/LAME-LICENSE.txt`, and the source package is retained under `vendor/unpacked/package`. See the [upstream project](https://github.com/zhuker/lamejs) and [GNU LGPL-3.0 text](https://www.gnu.org/licenses/lgpl-3.0.en.html).

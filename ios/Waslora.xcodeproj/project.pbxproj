@@ -1,0 +1,69 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* WasloraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* WasloraApp.swift */; };
+		A10000000000000000000002 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* Models.swift */; };
+		A10000000000000000000003 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* DownloadManager.swift */; };
+		A10000000000000000000004 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000004 /* LibraryStore.swift */; };
+		A10000000000000000000005 /* AudioConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* AudioConverter.swift */; };
+		A10000000000000000000006 /* Views.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* Views.swift */; };
+		A10000000000000000000007 /* LocalTransferServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000007 /* LocalTransferServer.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B10000000000000000000000 /* Waslora.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Waslora.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B10000000000000000000001 /* WasloraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WasloraApp.swift; sourceTree = "<group>"; };
+		B10000000000000000000002 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		B10000000000000000000003 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+		B10000000000000000000004 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
+		B10000000000000000000005 /* AudioConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioConverter.swift; sourceTree = "<group>"; };
+		B10000000000000000000006 /* Views.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views.swift; sourceTree = "<group>"; };
+		B10000000000000000000007 /* LocalTransferServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTransferServer.swift; sourceTree = "<group>"; };
+		B10000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C10000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		C10000000000000000000002 = {isa = PBXGroup; children = (C10000000000000000000003, C10000000000000000000004,); sourceTree = "<group>"; };
+		C10000000000000000000003 /* Waslora */ = {isa = PBXGroup; children = (B10000000000000000000001, B10000000000000000000002, B10000000000000000000003, B10000000000000000000004, B10000000000000000000005, B10000000000000000000006, B10000000000000000000007, B10000000000000000000008,); path = Waslora; sourceTree = "<group>"; };
+		C10000000000000000000004 /* Products */ = {isa = PBXGroup; children = (B10000000000000000000000,); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		D10000000000000000000001 /* Waslora */ = {isa = PBXNativeTarget; buildConfigurationList = D10000000000000000000003 /* Build configuration list for PBXNativeTarget "Waslora" */; buildPhases = (D10000000000000000000004 /* Sources */, C10000000000000000000001 /* Frameworks */, D10000000000000000000005 /* Resources */,); buildRules = (); dependencies = (); name = Waslora; productName = Waslora; productReference = B10000000000000000000000 /* Waslora.app */; productType = "com.apple.product-type.application"; };
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D10000000000000000000002 /* Project object */ = {isa = PBXProject; attributes = { LastUpgradeCheck = 1600; TargetAttributes = { D10000000000000000000001 = { CreatedOnToolsVersion = 16.0; }; }; }; buildConfigurationList = D10000000000000000000006 /* Build configuration list for PBXProject "Waslora" */; compatibilityVersion = "Xcode 15.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base,); mainGroup = C10000000000000000000002; productRefGroup = C10000000000000000000004 /* Products */; projectDirPath = ""; projectRoot = ""; targets = (D10000000000000000000001 /* Waslora */,); };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D10000000000000000000005 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D10000000000000000000004 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003, A10000000000000000000004, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		E10000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Waslora/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.0; PRODUCT_BUNDLE_IDENTIFIER = com.waslora.ios; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		E10000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Waslora/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.0; PRODUCT_BUNDLE_IDENTIFIER = com.waslora.ios; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+		E10000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { SDKROOT = iphoneos; }; name = Debug; };
+		E10000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { SDKROOT = iphoneos; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		D10000000000000000000003 /* Build configuration list for PBXNativeTarget "Waslora" */ = {isa = XCConfigurationList; buildConfigurations = (E10000000000000000000001, E10000000000000000000002,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		D10000000000000000000006 /* Build configuration list for PBXProject "Waslora" */ = {isa = XCConfigurationList; buildConfigurations = (E10000000000000000000003, E10000000000000000000004,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = D10000000000000000000002 /* Project object */;
+}

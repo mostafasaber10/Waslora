@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101832">
+  <title>Waslora</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 512 512"><rect width="512" height="512" rx="118" fill="#101832"/><path d="M112 170h217c34 0 55 20 55 53v22m-34-11 34 38 34-38M400 342H183c-34 0-55-20-55-53v-22m34 11-34-38-34 38" fill="none" stroke="#51E0D2" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/><path d="M225 211l91 45-91 45z" fill="#FFD078"/></svg>
+    </div>
+    <div><strong>Waslora</strong><span>وسائطك وملفاتك في مكان واحد</span></div>
+    <button class="icon-button" id="refreshButton" aria-label="تحديث">↻</button>
+  </header>
+
+  <main>
+    <nav class="tabs" aria-label="أقسام التطبيق">
+      <button class="tab active" data-screen="download">تنزيل</button>
+      <button class="tab" data-screen="library">المكتبة</button>
+      <button class="tab" data-screen="convert">تحويل الصوت</button>
+      <button class="tab" data-screen="transfer">نقل للابتوب</button>
+    </nav>
+
+    <section class="screen active" id="screen-download">
+      <div class="hero">
+        <p class="eyebrow">تنزيل مباشر</p>
+        <h1>نزّل الفيديو من رابطه</h1>
+        <p>ألصق رابطًا عامًا من يوتيوب أو فيسبوك أو إنستقرام أو تيك توك، وسيحاول Waslora تنزيل الفيديو مباشرة على الهاتف. روابط الملفات المباشرة تعمل أيضًا.</p>
+      </div>
+      <form id="downloadForm" class="card">
+        <label for="videoUrl">رابط الفيديو أو رابط الملف</label>
+        <div class="input-row"><input id="videoUrl" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="url" required><button class="primary" type="submit">تنزيل</button></div>
+        <p class="hint">التنزيل يتم داخل الهاتف. الفيديوهات الخاصة أو المحمية بتسجيل دخول أو DRM لا يمكن تنزيلها.</p>
+      </form>
+      <div id="downloadStatus" class="status hidden" role="status"></div>
+      <div class="note"><strong>مكان الحفظ</strong><span>كل تنزيل وتحويل ووصول من الكمبيوتر يظهر في <b>Download/Waslora</b> داخل تطبيق «الملفات». افتح «المكتبة» لرؤية الملفات مرتبة حسب النوع.</span></div>
+    </section>
+
+    <section class="screen" id="screen-library">
+      <div class="hero">
+        <p class="eyebrow">ملفاتك في مكان واحد</p>
+        <h1>مكتبة Waslora</h1>
+        <p>كل ما نزلته أو حولته أو استلمته من الكمبيوتر محفوظ هنا ويمكن فتحه أو مشاركته.</p>
+      </div>
+      <div class="library-filters" role="tablist" aria-label="تصفية الملفات">
+        <button class="filter active" data-filter="all">الكل</button>
+        <button class="filter" data-filter="video">فيديو</button>
+        <button class="filter" data-filter="audio">صوت</button>
+        <button class="filter" data-filter="image">صور</button>
+      </div>
+      <div class="section-title"><h2>الملفات المحفوظة</h2><button class="text-button" id="reloadFiles">تحديث</button></div>
+      <div id="downloadsList" class="file-list"><div class="empty">لا توجد ملفات بعد.</div></div>
+      <div class="note"><strong>مكان الحفظ</strong><span>يمكنك الوصول إليها أيضًا من تطبيق «الملفات» داخل <b>Download/Waslora</b>.</span></div>
+    </section>
+
+    <section class="screen" id="screen-convert">
+      <div class="hero">
+        <p class="eyebrow">استخراج الصوت</p>
+        <h1>حوّل الفيديو إلى ملف صوتي</h1>
+        <p>اختر فيديو محفوظًا على الهاتف، ثم احفظ الصوت بصيغة M4A أو MP3.</p>
+      </div>
+      <div class="card">
+        <label for="audioFormat">صيغة الصوت</label>
+        <select id="audioFormat"><option value="m4a">M4A (AAC)</option><option value="mp3">MP3</option></select>
+        <button class="primary wide" id="pickVideo">اختيار فيديو</button>
+        <button class="secondary wide hidden" id="convertShared">تحويل الفيديو المستلَم</button>
+        <p class="hint">تحويل M4A يحافظ على الجودة والسرعة عندما يكون مسار الصوت متوافقًا. تحويل MP3 يعيد ترميز الصوت وقد يستغرق وقتًا أطول.</p>
+      </div>
+      <div id="convertStatus" class="status hidden" role="status"></div>
+    </section>
+
+    <section class="screen" id="screen-transfer">
+      <div class="hero">
+        <p class="eyebrow">نقل محلي مباشر</p>
+        <h1>الهاتف واللابتوب على نفس الشبكة</h1>
+        <p>انقل الملفات مباشرة عبر Wi‑Fi. لا تُرفع الملفات إلى خادم سحابي.</p>
+      </div>
+      <div class="card">
+        <div class="transfer-status"><span class="pulse"></span><div><strong id="transferHeading">النقل متوقف</strong><small id="transferSubheading">شغّل صفحة النقل عندما يكون اللابتوب على شبكة Wi‑Fi نفسها.</small></div></div>
+        <button class="primary wide" id="startTransfer">تشغيل صفحة النقل</button>
+        <button class="secondary wide" id="pickPhoneFiles">اختيار ملفات من الهاتف لإرسالها للكمبيوتر</button>
+        <div id="phoneFilesStatus" class="status hidden" role="status"></div>
+        <div id="transferUrlBox" class="url-box hidden"><label for="transferUrl">افتح هذا العنوان في متصفح اللابتوب</label><div class="input-row"><input id="transferUrl" readonly><button class="secondary" id="copyUrl">نسخ</button></div></div>
+        <button class="text-button hidden" id="stopTransfer">إيقاف النقل</button>
+      </div>
+      <div class="note"><strong>اتجاه النقل</strong><span>لإرسال ملف من الهاتف، اختره هنا ثم افتح العنوان من الكمبيوتر واضغط تحديث لتنزيله. لإرسال ملف من الكمبيوتر للهاتف، استخدم زر اختيار الملفات في صفحة الكمبيوتر. جميع الملفات تظهر في Download/Waslora على الهاتف.</span></div>
+    </section>
+
+  </main>
+  <footer><span>Waslora</span><span>تنزيل مباشر · صوت · نقل محلي</span></footer>
+  <script src="app.js"></script>
+</body>
+</html>

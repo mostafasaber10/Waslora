@@ -1,0 +1,31 @@
+# Build output and local caches
+out/
+.build-cache/
+tests/out/
+*.apk
+*.aab
+*.idsig
+
+# IDE and OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Local resolver secrets and generated job data
+resolver/.env
+resolver/waslora-resolver/
+
+# Xcode generated files
+ios/DerivedData/
+ios/build/
+ios/Waslora.xcodeproj/xcuserdata/
+ios/Waslora.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcuserstate
+
+# Signing material
+*.p12
+*.mobileprovision
+*.cer
+*.keystore

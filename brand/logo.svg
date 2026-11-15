@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Waslora</title>
+  <desc id="desc">Two-way transfer arrows framing a media play symbol.</desc>
+  <defs>
+    <linearGradient id="brand" x1="104" y1="161" x2="405" y2="350" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#51E0D2"/>
+      <stop offset="1" stop-color="#8CA2FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="118" fill="#101832"/>
+  <path d="M112 170h217c34 0 55 20 55 53v22" fill="none" stroke="url(#brand)" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m350 234 34 38 34-38" fill="none" stroke="#51E0D2" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M400 342H183c-34 0-55-20-55-53v-22" fill="none" stroke="url(#brand)" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m162 278-34-38-34 38" fill="none" stroke="#8CA2FF" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m225 211 91 45-91 45z" fill="#FFD078"/>
+</svg>
