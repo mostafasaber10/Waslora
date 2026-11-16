@@ -1,7 +1,7 @@
 param(
     [switch]$Release,
-    [string]$VersionName = '0.3.0',
-    [int]$VersionCode = 4
+    [string]$VersionName = '0.4.0',
+    [int]$VersionCode = 5
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,7 +54,7 @@ $Resources = Join-Path $ProjectRoot 'app\src\main\res'
 $JniLibs = Join-Path $ProjectRoot 'app\src\main\jniLibs'
 $VendorDeps = Join-Path $ProjectRoot 'vendor\youtubedl-android-0.18.1'
 $YtDlpBinary = Join-Path $Resources 'raw\ytdlp'
-$ExpectedYtDlpSha256 = '3f1b267b4488f3aed3731a9e84a44011ca5569901868532e10ee11fd07d69707'
+$ExpectedYtDlpSha256 = 'e51e69e89489f199530f13d32a4342da3ddb2cf34842f364603a066db05afbf3'
 $Manifest = Join-Path $ProjectRoot 'app\src\main\AndroidManifest.xml'
 
 foreach ($required in @(
@@ -107,7 +107,7 @@ $GeneratedJava = Join-Path $Output 'generated-java'
 if (Test-Path -LiteralPath $GeneratedJava) { Remove-Item -LiteralPath $GeneratedJava -Recurse -Force }
 New-Item -ItemType Directory -Path $GeneratedJava -Force | Out-Null
 $UnsignedApk = Join-Path $Output 'Waslora-unsigned.apk'
-& $Aapt2 link -o $UnsignedApk -I $AndroidPlatform --manifest $Manifest -R $ResourceZip --java $GeneratedJava --extra-packages com.yausername.youtubedl_android --min-sdk-version 24 --target-sdk-version 35 --version-code $VersionCode --version-name $VersionName
+& $Aapt2 link -o $UnsignedApk -I $AndroidPlatform --manifest $Manifest -R $ResourceZip --auto-add-overlay --java $GeneratedJava --extra-packages com.yausername.youtubedl_android --min-sdk-version 24 --target-sdk-version 35 --version-code $VersionCode --version-name $VersionName
 if ($LASTEXITCODE -ne 0) { throw 'aapt2 APK linking failed.' }
 
 $Sources = @(Get-ChildItem -LiteralPath (Join-Path $ProjectRoot 'app\src\main\java') -Filter '*.java' -Recurse | Select-Object -ExpandProperty FullName)

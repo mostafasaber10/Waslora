@@ -8,6 +8,19 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="studioSplash" class="studio-splash" aria-label="Tata Studios presents Waslora">
+    <div class="studio-lockup">
+      <svg class="studio-symbol" viewBox="0 0 120 120" role="img" aria-label="Tata Studios logo">
+        <path class="symbol-frame" d="M24 25h72v70H24z" />
+        <path class="symbol-t" d="M39 42h42M60 42v39" />
+        <path class="symbol-cut" d="M76 79l7 7" />
+      </svg>
+      <p class="studio-presents">PRESENTS</p>
+      <div class="studio-name">TATA <span>STUDIOS</span></div>
+      <div class="studio-rule"></div>
+      <p class="studio-product">WASLORA</p>
+    </div>
+  </div>
   <header class="topbar">
     <div class="brand-mark" aria-hidden="true">
       <svg viewBox="0 0 512 512"><rect width="512" height="512" rx="118" fill="#101832"/><path d="M112 170h217c34 0 55 20 55 53v22m-34-11 34 38 34-38M400 342H183c-34 0-55-20-55-53v-22m34 11-34-38-34 38" fill="none" stroke="#51E0D2" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/><path d="M225 211l91 45-91 45z" fill="#FFD078"/></svg>
@@ -33,7 +46,17 @@
       <form id="downloadForm" class="card">
         <label for="videoUrl">رابط الفيديو أو رابط الملف</label>
         <div class="input-row"><input id="videoUrl" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="url" required><button class="primary" type="submit">تنزيل</button></div>
-        <p class="hint">التنزيل يتم داخل الهاتف. الفيديوهات الخاصة أو المحمية بتسجيل دخول أو DRM لا يمكن تنزيلها.</p>
+        <label class="quality-label" for="videoQuality">أقصى جودة للفيديو</label>
+        <select id="videoQuality" class="quality-select">
+          <option value="best">أفضل جودة متاحة</option>
+          <option value="2160">4K · 2160p أو أقل</option>
+          <option value="1440">2K · 1440p أو أقل</option>
+          <option value="1080" selected>Full HD · 1080p أو أقل</option>
+          <option value="720">HD · 720p أو أقل</option>
+          <option value="480">480p أو أقل</option>
+          <option value="360">360p أو أقل</option>
+        </select>
+        <p class="hint">يختار Waslora أعلى دقة متاحة حتى الحد الذي حددته، ويضم الصوت للفيديو تلقائيًا. روابط الملفات المباشرة تُحمّل بجودتها الأصلية.</p>
       </form>
       <div id="downloadStatus" class="status hidden" role="status"></div>
       <div class="note"><strong>مكان الحفظ</strong><span>كل تنزيل وتحويل ووصول من الكمبيوتر يظهر في <b>Download/Waslora</b> داخل تطبيق «الملفات». افتح «المكتبة» لرؤية الملفات مرتبة حسب النوع.</span></div>

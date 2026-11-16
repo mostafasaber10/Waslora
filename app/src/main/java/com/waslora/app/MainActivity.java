@@ -235,14 +235,14 @@ public final class MainActivity extends Activity {
 
     private final class Bridge {
         @JavascriptInterface
-        public void downloadFromUrl(String url) {
+        public void downloadFromUrl(String url, String quality) {
             final String value = url == null ? "" : url.trim();
             if (value.isEmpty()) {
                 emit("download-error", json("message", "أدخل رابط الفيديو أولًا."));
                 return;
             }
             if (!DirectDownloader.isLikelyDirectFileUrl(value)) {
-                LocalPlatformDownloader.download(MainActivity.this, value, new LocalPlatformDownloader.Callback() {
+                LocalPlatformDownloader.download(MainActivity.this, value, quality, new LocalPlatformDownloader.Callback() {
                     @Override public void onProgress(String message) { emit("download-message", json("message", message)); }
                     @Override public void onComplete(File file) { emitDownloadComplete(file); }
                     @Override public void onError(String message) { emit("download-error", json("message", message)); }

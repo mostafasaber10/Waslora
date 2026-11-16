@@ -19,7 +19,12 @@ for (const [, method] of activitySource.matchAll(/window\.WasloraUI&&window\.Was
 }
 assert(activitySource.includes('LocalPlatformDownloader.download'), 'platform links must use the on-device downloader');
 assert(localDownloaderSource.includes('YoutubeDL.getInstance().execute'), 'platform downloads must execute yt-dlp locally');
-assert(localDownloaderSource.includes('FORMAT_SELECTOR = "bv*+ba/b"'), 'platform downloads must accept separate or combined video formats');
+assert(localDownloaderSource.includes('PlatformDownloadQuality.formatSelector(quality)'), 'platform downloads must apply the selected quality');
+assert(localDownloaderSource.includes('PlatformDownloadQuality.formatSelector(quality)'), 'quality selection must be allowlisted before reaching yt-dlp');
+assert(appHtml.includes('id="videoQuality"'), 'download screen must expose video quality choices');
+assert(appScript.includes("nativeCall('downloadFromUrl', [url, quality])"), 'selected video quality must reach the Android bridge');
+assert(appHtml.includes('TATA <span>STUDIOS</span>'), 'launch splash must credit Tata Studios');
+assert(appHtml.includes('studioSplash'), 'launch splash must be present');
 assert(!localDownloaderSource.includes('best[ext=mp4]'), 'platform downloads must not require an MP4 format unavailable on some links');
 assert(!appHtml.includes('resolverEndpoint'), 'platform links must not require Resolver settings');
 assert(transferServiceSource.includes('PublicFileStore.mimeType(name)'), 'phone-to-laptop transfers must retain media MIME types');

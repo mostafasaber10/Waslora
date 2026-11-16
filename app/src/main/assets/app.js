@@ -4,6 +4,17 @@
   let mp3Worker = null;
   let mp3Job = '';
   let activeFilter = 'all';
+  const splash = $('studioSplash');
+  if (splash) {
+    window.setTimeout(() => splash.classList.add('studio-splash-out'), 1500);
+    splash.addEventListener('animationend', (event) => {
+      if (event.target === splash) splash.remove();
+    });
+  }
+  try {
+    const storedQuality = localStorage.getItem('waslora-video-quality');
+    if (storedQuality && [...$('videoQuality').options].some((option) => option.value === storedQuality)) $('videoQuality').value = storedQuality;
+  } catch (_) {}
   const formatBytes = (n) => {
     if (!n) return '0 بايت';
     const units = ['بايت','KB','MB','GB']; let i = 0; let value = n;
@@ -29,8 +40,10 @@
   $('downloadForm').addEventListener('submit', (event) => {
     event.preventDefault(); const url = $('videoUrl').value.trim();
     if (!url) return;
+    const quality = $('videoQuality').value || '1080';
+    try { localStorage.setItem('waslora-video-quality', quality); } catch (_) {}
     showStatus('downloadStatus', 'جارٍ فحص الرابط وبدء التنزيل…');
-    nativeCall('downloadFromUrl', [url]);
+    nativeCall('downloadFromUrl', [url, quality]);
   });
   $('reloadFiles').addEventListener('click', loadFiles);
   document.querySelectorAll('.filter').forEach((button) => button.addEventListener('click', () => {

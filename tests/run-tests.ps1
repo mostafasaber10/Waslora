@@ -34,10 +34,12 @@ $Sources = @(
     (Join-Path $ProjectRoot 'app\src\main\java\com\waslora\app\HttpUploadBody.java'),
     (Join-Path $ProjectRoot 'app\src\main\java\com\waslora\app\DirectDownloader.java'),
     (Join-Path $ProjectRoot 'app\src\main\java\com\waslora\app\MediaMimeTypes.java'),
+    (Join-Path $ProjectRoot 'app\src\main\java\com\waslora\app\PlatformDownloadQuality.java'),
     (Join-Path $PSScriptRoot 'PcmSamplesTest.java'),
     (Join-Path $PSScriptRoot 'HttpUploadBodyTest.java'),
     (Join-Path $PSScriptRoot 'DirectDownloaderLinkTest.java'),
-    (Join-Path $PSScriptRoot 'MediaMimeTypesTest.java')
+    (Join-Path $PSScriptRoot 'MediaMimeTypesTest.java'),
+    (Join-Path $PSScriptRoot 'PlatformDownloadQualityTest.java')
 )
 & (Join-Path $JdkBin 'javac.exe') -encoding UTF-8 -classpath $AndroidPlatform -d $TestOutput @Sources
 if ($LASTEXITCODE -ne 0) { throw 'Java regression tests did not compile.' }
@@ -50,6 +52,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Local-transfer upload tests failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Direct-link validation regression tests failed.' }
 & (Join-Path $JdkBin 'java.exe') -classpath $RuntimeClasspath com.waslora.app.MediaMimeTypesTest
 if ($LASTEXITCODE -ne 0) { throw 'Media MIME type regression tests failed.' }
+& (Join-Path $JdkBin 'java.exe') -classpath $RuntimeClasspath com.waslora.app.PlatformDownloadQualityTest
+if ($LASTEXITCODE -ne 0) { throw 'Platform download quality tests failed.' }
 node (Join-Path $PSScriptRoot 'mp3-worker-smoke.cjs')
 if ($LASTEXITCODE -ne 0) { throw 'UI and MP3 worker smoke test failed.' }
 node --check (Join-Path $ProjectRoot 'app\src\main\assets\app.js')

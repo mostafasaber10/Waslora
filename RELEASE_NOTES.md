@@ -1,8 +1,11 @@
-# Waslora 0.3.0
+# Waslora 0.4.0
 
 ## Android
 
 - Downloads large direct files and supported public platform links on the device.
+- Adds maximum video quality choices from 360p through 4K.
+- Updates yt-dlp to the official 2026.10.26 release for newer platform extractors.
+- Adds a black Tata Studios opening splash screen.
 - Adds a dedicated media library with filters for video, audio, and images.
 - Re-encodes supported non-AAC audio tracks to AAC when creating M4A files.
 - Improves local transfer for large files over the same Wi-Fi network.

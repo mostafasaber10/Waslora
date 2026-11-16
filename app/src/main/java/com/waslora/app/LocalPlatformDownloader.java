@@ -18,10 +18,6 @@ import kotlin.jvm.functions.Function3;
 
 /** Runs yt-dlp and FFmpeg inside the phone; no Resolver server is required. */
 public final class LocalPlatformDownloader {
-    // Prefer the best video stream (including a video-only stream) plus audio;
-    // fall back to a combined format when the site does not expose separate streams.
-    private static final String FORMAT_SELECTOR = "bv*+ba/b";
-
     public interface Callback {
         void onProgress(String message);
         void onComplete(File file);
@@ -33,7 +29,7 @@ public final class LocalPlatformDownloader {
 
     private LocalPlatformDownloader() {}
 
-    public static void download(Context context, String pageUrl, Callback callback) {
+    public static void download(Context context, String pageUrl, String quality, Callback callback) {
         new Thread(() -> {
             File jobDirectory = null;
             try {
@@ -61,7 +57,7 @@ public final class LocalPlatformDownloader {
                 // Do not impose an artificial 2 GB ceiling.  The phone's free
                 // storage is the practical limit and yt-dlp can stream large
                 // files safely into the per-job directory.
-                request.addOption("-f", FORMAT_SELECTOR);
+                request.addOption("-f", PlatformDownloadQuality.formatSelector(quality));
                 request.addOption("-o", template);
                 callback.onProgress("جارٍ استخراج الفيديو على الهاتف…");
                 YoutubeDLResponseHolder result = execute(request, callback);
