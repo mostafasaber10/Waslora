@@ -12,6 +12,7 @@ import java.net.URI;
 import java.util.UUID;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import kotlin.Unit;
 import kotlin.jvm.functions.Function3;
@@ -22,67 +23,165 @@ public final class LocalPlatformDownloader {
         void onProgress(String message);
         void onComplete(File file);
         void onError(String message);
+        void onPaused();
+        void onResumed();
     }
 
     private static final Object INIT_LOCK = new Object();
     private static volatile boolean initialized;
+    private static final ConcurrentHashMap<String, Job> JOBS = new ConcurrentHashMap<>();
 
     private LocalPlatformDownloader() {}
 
-    public static void download(Context context, String pageUrl, String quality, Callback callback) {
-        new Thread(() -> {
-            File jobDirectory = null;
-            try {
-                URI parsed = new URI(pageUrl == null ? "" : pageUrl.trim());
-                if (parsed.getHost() == null || parsed.getUserInfo() != null ||
-                        !("http".equalsIgnoreCase(parsed.getScheme()) || "https".equalsIgnoreCase(parsed.getScheme()))) {
-                    throw new Exception("أدخل رابطًا كاملًا يبدأ بـ http أو https.");
-                }
-                callback.onProgress("جارٍ تجهيز محرك التنزيل داخل الهاتف…");
-                ensureInitialized(context);
-                File directory = DirectDownloader.downloadsDirectory(context);
-                if (!directory.exists() && !directory.mkdirs()) throw new Exception("تعذر إنشاء مجلد التنزيلات.");
-                jobDirectory = new File(directory, ".platform-" + UUID.randomUUID());
-                if (!jobDirectory.mkdirs()) throw new Exception("تعذر إنشاء مجلد مهمة التنزيل.");
-                Set<String> before = fileNames(jobDirectory);
-                String template = new File(jobDirectory, "%(title).100B-%(id)s.%(ext)s").getAbsolutePath();
-                YoutubeDLRequest request = new YoutubeDLRequest(pageUrl);
-                request.addOption("--no-playlist");
-                request.addOption("--no-warnings");
-                request.addOption("--newline");
-                request.addOption("--retries", "5");
-                request.addOption("--fragment-retries", "5");
-                request.addOption("--concurrent-fragments", "4");
-                request.addOption("--socket-timeout", "30");
-                // Do not impose an artificial 2 GB ceiling.  The phone's free
-                // storage is the practical limit and yt-dlp can stream large
-                // files safely into the per-job directory.
-                request.addOption("-f", PlatformDownloadQuality.formatSelector(quality));
-                request.addOption("-o", template);
-                callback.onProgress("جارٍ استخراج الفيديو على الهاتف…");
-                YoutubeDLResponseHolder result = execute(request, callback);
-                if (result.exitCode != 0) throw new Exception(safeError(result.error));
-                File downloaded = newestNewFile(jobDirectory, before);
-                if (downloaded == null) throw new Exception("انتهى المحرك بدون ملف فيديو. قد يكون الرابط خاصًا أو غير مدعوم.");
-                File output = uniqueFile(directory, downloaded.getName());
-                if (!downloaded.renameTo(output)) throw new Exception("تعذر حفظ ملف الفيديو في مجلد التنزيلات.");
-                callback.onComplete(output);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                callback.onError("تم إيقاف تنزيل الفيديو.");
-            } catch (Exception e) {
-                callback.onError(userMessage(e));
-            } finally {
-                if (jobDirectory != null) deleteDirectory(jobDirectory);
-            }
-        }, "Waslora-local-platform-download").start();
+    public static String download(Context context, String pageUrl, String quality, Callback callback) {
+        Job job = new Job(context.getApplicationContext(), pageUrl == null ? "" : pageUrl.trim(), quality, callback);
+        JOBS.put(job.id, job);
+        run(job);
+        return job.id;
     }
 
-    private static YoutubeDLResponseHolder execute(YoutubeDLRequest request, Callback callback) throws Exception {
+    public static void pause(String id) {
+        Job job = JOBS.get(id);
+        if (job == null) return;
+        synchronized (job.lock) {
+            if (job.paused || job.pauseRequested || job.finished) return;
+            job.pauseRequested = true;
+        }
+        YoutubeDL.getInstance().destroyProcessById(job.id);
+    }
+
+    public static void resume(String id) {
+        Job job = JOBS.get(id);
+        if (job == null) return;
+        synchronized (job.lock) {
+            if (job.finished) return;
+            if (job.pauseRequested) {
+                job.resumeRequested = true;
+                return;
+            }
+            if (!job.paused) return;
+            job.paused = false;
+        }
+        job.callback.onResumed();
+        run(job);
+    }
+
+    private static void run(Job job) {
+        synchronized (job.lock) {
+            if (job.running || job.finished) return;
+            job.running = true;
+        }
+        new Thread(() -> runJob(job), "Waslora-platform-download").start();
+    }
+
+    private static void runJob(Job job) {
+        try {
+            URI parsed = new URI(job.pageUrl);
+            if (parsed.getHost() == null || parsed.getUserInfo() != null ||
+                    !("http".equalsIgnoreCase(parsed.getScheme()) || "https".equalsIgnoreCase(parsed.getScheme()))) {
+                throw new Exception("أدخل رابطًا كاملًا يبدأ بـ http أو https.");
+            }
+            job.callback.onProgress("جارٍ تجهيز محرك التنزيل داخل الهاتف…");
+            ensureInitialized(job.context);
+            File directory = DirectDownloader.downloadsDirectory(job.context);
+            if (!directory.exists() && !directory.mkdirs()) throw new Exception("تعذر إنشاء مجلد التنزيلات.");
+            if (job.jobDirectory == null) {
+                job.jobDirectory = new File(directory, ".platform-" + job.id);
+                if (!job.jobDirectory.mkdirs()) throw new Exception("تعذر إنشاء مجلد مهمة التنزيل.");
+                job.before = fileNames(job.jobDirectory);
+                String template = new File(job.jobDirectory, "%(title).100B-%(id)s.%(ext)s").getAbsolutePath();
+                job.request = new YoutubeDLRequest(job.pageUrl);
+                job.request.addOption("--no-playlist");
+                job.request.addOption("--no-warnings");
+                job.request.addOption("--newline");
+                job.request.addOption("--retries", "5");
+                job.request.addOption("--fragment-retries", "5");
+                job.request.addOption("--concurrent-fragments", "4");
+                job.request.addOption("--socket-timeout", "30");
+                job.request.addOption("-f", PlatformDownloadQuality.formatSelector(job.quality));
+                job.request.addOption("-o", template);
+            }
+            if (finishPause(job)) return;
+            job.callback.onProgress("جارٍ تنزيل الفيديو…");
+            YoutubeDLResponseHolder result = execute(job.request, job.id, job.callback);
+            boolean restart = false;
+            synchronized (job.lock) {
+                job.running = false;
+                if (job.pauseRequested) {
+                    job.pauseRequested = false;
+                    if (job.resumeRequested) {
+                        job.resumeRequested = false;
+                        job.paused = false;
+                        restart = true;
+                    } else {
+                        job.paused = true;
+                    }
+                } else if (result.exitCode == 0) {
+                    File downloaded = newestNewFile(job.jobDirectory, job.before);
+                    if (downloaded == null) throw new Exception("انتهى المحرك بدون ملف فيديو. قد يكون الرابط خاصًا أو غير مدعوم.");
+                    File output = uniqueFile(directory, downloaded.getName());
+                    if (!downloaded.renameTo(output)) throw new Exception("تعذر حفظ ملف الفيديو في مجلد التنزيلات.");
+                    job.finished = true;
+                    JOBS.remove(job.id);
+                    deleteDirectory(job.jobDirectory);
+                    job.callback.onComplete(output);
+                    return;
+                } else {
+                    throw new Exception(safeError(result.error));
+                }
+            }
+            if (restart) {
+                job.callback.onResumed();
+                run(job);
+            } else {
+                job.callback.onPaused();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (!finishPause(job)) fail(job, "تم إيقاف تنزيل الفيديو.");
+        } catch (Exception e) {
+            if (!finishPause(job)) fail(job, userMessage(e));
+        }
+    }
+
+    private static boolean finishPause(Job job) {
+        boolean restart = false;
+        synchronized (job.lock) {
+            if (!job.pauseRequested) return false;
+            job.pauseRequested = false;
+            job.running = false;
+            if (job.resumeRequested) {
+                job.resumeRequested = false;
+                job.paused = false;
+                restart = true;
+            } else {
+                job.paused = true;
+            }
+        }
+        if (restart) {
+            job.callback.onResumed();
+            run(job);
+        } else {
+            job.callback.onPaused();
+        }
+        return true;
+    }
+
+    private static void fail(Job job, String message) {
+        synchronized (job.lock) {
+            if (job.pauseRequested || job.finished) return;
+            job.finished = true;
+            job.running = false;
+        }
+        JOBS.remove(job.id);
+        if (job.jobDirectory != null) deleteDirectory(job.jobDirectory);
+        job.callback.onError(message);
+    }
+
+    private static YoutubeDLResponseHolder execute(YoutubeDLRequest request, String jobId, Callback callback) throws Exception {
         final YoutubeDLResponseHolder holder = new YoutubeDLResponseHolder();
         // Each job gets its own yt-dlp identifier.  Reusing one identifier can
         // make concurrent downloads overwrite each other's state/progress.
-        String jobId = "waslora-platform-" + UUID.randomUUID();
         com.yausername.youtubedl_android.YoutubeDLResponse response = YoutubeDL.getInstance().execute(request, jobId, new Function3<Float, Long, String, Unit>() {
             @Override public Unit invoke(Float progress, Long eta, String line) {
                 int percent = progress == null ? 0 : Math.max(0, Math.min(99, Math.round(progress)));
@@ -94,6 +193,26 @@ public final class LocalPlatformDownloader {
         holder.exitCode = response.getExitCode();
         holder.error = response.getErr();
         return holder;
+    }
+
+    private static final class Job {
+        final String id = "waslora-platform-" + UUID.randomUUID();
+        final Context context;
+        final String pageUrl;
+        final String quality;
+        final Callback callback;
+        final Object lock = new Object();
+        volatile boolean running;
+        volatile boolean paused;
+        volatile boolean pauseRequested;
+        volatile boolean resumeRequested;
+        volatile boolean finished;
+        File jobDirectory;
+        Set<String> before;
+        YoutubeDLRequest request;
+        Job(Context context, String pageUrl, String quality, Callback callback) {
+            this.context = context; this.pageUrl = pageUrl; this.quality = quality; this.callback = callback;
+        }
     }
 
     private static void ensureInitialized(Context context) throws YoutubeDLException {

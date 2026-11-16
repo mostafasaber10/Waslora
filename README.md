@@ -1,4 +1,4 @@
-# Waslora / وصلورا (0.4.0)
+# Waslora / وصلورا (0.4.1)
 
 Waslora is a clean Android implementation of the useful workflows identified in the two supplied APKs. The chosen name is a working product name; trademark and store-name availability have not been cleared. The vector logo is in `brand/logo.svg` and the Android icon is in `app/src/main/res/drawable/ic_waslora.xml`.
 
@@ -7,6 +7,7 @@ Waslora is a clean Android implementation of the useful workflows identified in 
 - Direct HTTP/HTTPS media-file downloads. When the server advertises byte-range support, files of at least 16 MB are fetched over up to six parallel connections; interrupted sequential downloads can resume.
 - Public platform-link downloads through the embedded yt-dlp 2026.10.26 and FFmpeg engine. YouTube, Facebook, Instagram, TikTok, X/Twitter, and other supported yt-dlp domains are processed on the phone; no Resolver or laptop service is required. Platform extractors can change or be restricted by the source service, so individual links may not always work.
 - User-selectable maximum video quality from 360p through 4K, or the best available quality. If a source does not offer the selected maximum, Waslora chooses the highest lower quality; audio is merged automatically where needed. Direct media-file URLs are downloaded as served by their source.
+- Downloads can be paused and resumed from the download screen. Platform downloads retain yt-dlp partial data and direct downloads continue from their temporary file while the app remains active.
 - Video audio extraction to M4A or MP3. M4A copies a compatible AAC track without re-encoding and automatically decodes/re-encodes other supported audio codecs to AAC. MP3 decodes supported audio through Android MediaCodec and encodes it in a worker using the bundled `lamejs` library.
 - Two-way phone/laptop transfer over the same Wi-Fi network, using the active local-network address, a temporary tokenized URL, and a browser page served by the phone. The transfer service holds CPU/Wi-Fi locks only while the user runs the session; browser uploads show progress and accept both fixed-length and chunked HTTP bodies.
 - Completed downloads, conversions, and laptop uploads are copied to the public `Download/Waslora` folder on Android 10+, so they appear in the Files app. The app also offers open/share actions and can stage selected phone files for laptop download.
@@ -53,9 +54,9 @@ To enable signed GitHub releases:
    ```
 
 2. In the GitHub repository, open **Settings → Secrets and variables → Actions** and add `WASLORA_RELEASE_KEYSTORE_BASE64`, `WASLORA_RELEASE_ALIAS`, `WASLORA_RELEASE_STORE_PASSWORD`, and `WASLORA_RELEASE_KEY_PASSWORD`. For the Base64 secret, encode the `.jks` file locally without committing or posting it.
-3. Push a version tag such as `v0.4.0`. Actions runs tests and creates a **draft** release with the signed APK attached. Review it on GitHub and publish when ready.
+3. Push a version tag such as `v0.4.1`. Actions runs tests and creates a **draft** release with the signed APK attached. Review it on GitHub and publish when ready.
 
-For a local test build, use `build.ps1`. For a local signed release, set the `WASLORA_RELEASE_*` environment variables and run `build.ps1 -Release -VersionName 0.4.0 -VersionCode 5`.
+For a local test build, use `build.ps1`. For a local signed release, set the `WASLORA_RELEASE_*` environment variables and run `build.ps1 -Release -VersionName 0.4.1 -VersionCode 6`.
 
 If you are setting up the remote for the first time, create an empty GitHub repository, then run:
 

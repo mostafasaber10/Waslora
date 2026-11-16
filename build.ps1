@@ -1,7 +1,7 @@
 param(
     [switch]$Release,
-    [string]$VersionName = '0.4.0',
-    [int]$VersionCode = 5
+    [string]$VersionName = '0.4.1',
+    [int]$VersionCode = 6
 )
 
 $ErrorActionPreference = 'Stop'

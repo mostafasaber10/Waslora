@@ -41,6 +41,12 @@ public final class MainActivity extends Activity {
     private WebView webView;
     private volatile boolean pageReady;
     private volatile Uri pendingSharedVideo;
+    private volatile boolean downloadActive;
+    private volatile String platformDownloadId;
+    private volatile DirectDownloader.DownloadControl directDownloadControl;
+    private volatile boolean platformDownloadStarting;
+    private volatile boolean pauseBeforePlatformId;
+    private volatile boolean resumeBeforePlatformId;
 
     @Override
     public void onCreate(Bundle state) {
@@ -241,15 +247,54 @@ public final class MainActivity extends Activity {
                 emit("download-error", json("message", "أدخل رابط الفيديو أولًا."));
                 return;
             }
+            synchronized (MainActivity.this) {
+                if (downloadActive) {
+                    emit("download-error", json("message", "يوجد تنزيل جارٍ بالفعل. أوقفه مؤقتًا أو انتظر حتى يكتمل."));
+                    return;
+                }
+                downloadActive = true;
+            }
+            emitDownloadControl(false);
             if (!DirectDownloader.isLikelyDirectFileUrl(value)) {
-                LocalPlatformDownloader.download(MainActivity.this, value, quality, new LocalPlatformDownloader.Callback() {
+                platformDownloadStarting = true;
+                platformDownloadId = LocalPlatformDownloader.download(MainActivity.this, value, quality, new LocalPlatformDownloader.Callback() {
                     @Override public void onProgress(String message) { emit("download-message", json("message", message)); }
                     @Override public void onComplete(File file) { emitDownloadComplete(file); }
-                    @Override public void onError(String message) { emit("download-error", json("message", message)); }
+                    @Override public void onError(String message) { finishDownloadWithError(message); }
+                    @Override public void onPaused() { emitDownloadControl(true); }
+                    @Override public void onResumed() { emitDownloadControl(false); }
                 });
+                platformDownloadStarting = false;
+                if (pauseBeforePlatformId) {
+                    pauseBeforePlatformId = false;
+                    LocalPlatformDownloader.pause(platformDownloadId);
+                    if (resumeBeforePlatformId) LocalPlatformDownloader.resume(platformDownloadId);
+                }
+                resumeBeforePlatformId = false;
                 return;
             }
-            DirectDownloader.download(MainActivity.this, value, directDownloadCallback());
+            directDownloadControl = new DirectDownloader.DownloadControl();
+            DirectDownloader.download(MainActivity.this, value, directDownloadControl, directDownloadCallback());
+        }
+
+        @JavascriptInterface
+        public void pauseDownload() {
+            String id = platformDownloadId;
+            if (id != null) LocalPlatformDownloader.pause(id);
+            else if (platformDownloadStarting) pauseBeforePlatformId = true;
+            DirectDownloader.DownloadControl control = directDownloadControl;
+            if (control != null) control.pause();
+            emitDownloadControl(true);
+        }
+
+        @JavascriptInterface
+        public void resumeDownload() {
+            String id = platformDownloadId;
+            if (id != null) LocalPlatformDownloader.resume(id);
+            else if (platformDownloadStarting && pauseBeforePlatformId) resumeBeforePlatformId = true;
+            DirectDownloader.DownloadControl control = directDownloadControl;
+            if (control != null) control.resume();
+            emitDownloadControl(false);
         }
 
         @JavascriptInterface
@@ -499,7 +544,7 @@ public final class MainActivity extends Activity {
                 emit("download-progress", payload.toString());
             }
             @Override public void onComplete(File file) { emitDownloadComplete(file); }
-            @Override public void onError(String message) { emit("download-error", json("message", message)); }
+            @Override public void onError(String message) { finishDownloadWithError(message); }
         };
     }
 
@@ -512,7 +557,34 @@ public final class MainActivity extends Activity {
     }
 
     private void emitDownloadComplete(File file) {
+        synchronized (this) { downloadActive = false; }
+        platformDownloadId = null;
+        platformDownloadStarting = false;
+        pauseBeforePlatformId = false;
+        resumeBeforePlatformId = false;
+        directDownloadControl = null;
+        emitDownloadControl(false);
         emitPublishedFile("download-complete", file);
+    }
+
+    private void finishDownloadWithError(String message) {
+        synchronized (this) { downloadActive = false; }
+        platformDownloadId = null;
+        platformDownloadStarting = false;
+        pauseBeforePlatformId = false;
+        resumeBeforePlatformId = false;
+        directDownloadControl = null;
+        emitDownloadControl(false);
+        emit("download-error", json("message", message));
+    }
+
+    private void emitDownloadControl(boolean paused) {
+        JSONObject payload = new JSONObject();
+        try {
+            payload.put("active", downloadActive);
+            payload.put("paused", paused);
+        } catch (Exception ignored) {}
+        emit("download-controls", payload.toString());
     }
 
     private void importPhoneFilesForTransfer(Intent data) {

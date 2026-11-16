@@ -41,7 +41,7 @@
       <div class="hero">
         <p class="eyebrow">تنزيل مباشر</p>
         <h1>نزّل الفيديو من رابطه</h1>
-        <p>ألصق رابطًا عامًا من يوتيوب أو فيسبوك أو إنستقرام أو تيك توك، وسيحاول Waslora تنزيل الفيديو مباشرة على الهاتف. روابط الملفات المباشرة تعمل أيضًا.</p>
+        <p>ألصق رابطًا عامًا من يوتيوب أو فيسبوك أو إنستقرام أو تيك توك أو X، وسيحاول Waslora تنزيل الفيديو مباشرة على الهاتف. روابط الملفات المباشرة تعمل أيضًا.</p>
       </div>
       <form id="downloadForm" class="card">
         <label for="videoUrl">رابط الفيديو أو رابط الملف</label>
@@ -59,6 +59,11 @@
         <p class="hint">يختار Waslora أعلى دقة متاحة حتى الحد الذي حددته، ويضم الصوت للفيديو تلقائيًا. روابط الملفات المباشرة تُحمّل بجودتها الأصلية.</p>
       </form>
       <div id="downloadStatus" class="status hidden" role="status"></div>
+      <div id="downloadControls" class="download-controls hidden" aria-label="التحكم في التنزيل">
+        <span id="downloadControlHint">التنزيل جارٍ</span>
+        <button id="pauseDownload" class="secondary" type="button">إيقاف مؤقت</button>
+        <button id="resumeDownload" class="primary hidden" type="button">استئناف التنزيل</button>
+      </div>
       <div class="note"><strong>مكان الحفظ</strong><span>كل تنزيل وتحويل ووصول من الكمبيوتر يظهر في <b>Download/Waslora</b> داخل تطبيق «الملفات». افتح «المكتبة» لرؤية الملفات مرتبة حسب النوع.</span></div>
     </section>
 

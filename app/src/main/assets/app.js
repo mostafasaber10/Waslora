@@ -45,6 +45,8 @@
     showStatus('downloadStatus', 'جارٍ فحص الرابط وبدء التنزيل…');
     nativeCall('downloadFromUrl', [url, quality]);
   });
+  $('pauseDownload').addEventListener('click', () => nativeCall('pauseDownload', []));
+  $('resumeDownload').addEventListener('click', () => nativeCall('resumeDownload', []));
   $('reloadFiles').addEventListener('click', loadFiles);
   document.querySelectorAll('.filter').forEach((button) => button.addEventListener('click', () => {
     document.querySelectorAll('.filter').forEach((item) => item.classList.remove('active'));
@@ -156,6 +158,14 @@
         showStatus('downloadStatus', `اكتمل التنزيل: ${payload.name} · ${formatBytes(payload.size)} · ${payload.location || 'Download/Waslora'}`); loadFiles();
       } else if (type === 'download-error') {
         showStatus('downloadStatus', payload.message, true);
+      }
+      else if (type === 'download-controls') {
+        const active = !!payload.active;
+        const paused = !!payload.paused;
+        $('downloadControls').classList.toggle('hidden', !active);
+        $('pauseDownload').classList.toggle('hidden', paused);
+        $('resumeDownload').classList.toggle('hidden', !paused);
+        $('downloadControlHint').textContent = paused ? 'التنزيل متوقف مؤقتًا' : 'التنزيل جارٍ';
       }
       else if (type === 'file-error') showStatus('downloadStatus', payload.message || 'تعذر فتح الملف.', true);
       else if (type === 'download-message') showStatus('downloadStatus', payload.message || 'جارٍ التنزيل…');

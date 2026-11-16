@@ -10,6 +10,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.net.HttpURLConnection;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLDecoder;
 import java.util.Locale;
@@ -25,6 +26,18 @@ public final class DirectDownloader {
         void onProgress(long done, long total);
         void onComplete(File file);
         void onError(String message);
+    }
+
+    /** A cooperative pause gate shared by every connection in one download. */
+    public static final class DownloadControl {
+        private final Object lock = new Object();
+        private volatile boolean paused;
+        public void pause() { synchronized (lock) { paused = true; } }
+        public void resume() { synchronized (lock) { paused = false; lock.notifyAll(); } }
+        public boolean isPaused() { return paused; }
+        void awaitRunning() throws InterruptedException {
+            synchronized (lock) { while (paused) lock.wait(); }
+        }
     }
 
     private static final int CONNECT_TIMEOUT_MS = 20000;
@@ -55,11 +68,15 @@ public final class DirectDownloader {
     }
 
     public static void download(Context context, String rawUrl, Callback callback) {
+        download(context, rawUrl, new DownloadControl(), callback);
+    }
+
+    public static void download(Context context, String rawUrl, DownloadControl control, Callback callback) {
         final String url = rawUrl == null ? "" : rawUrl.trim();
         new Thread(() -> {
             try {
                 URL parsed = validateUrl(url);
-                File output = performDownload(context, parsed, callback);
+                File output = performDownload(context, parsed, control, callback);
                 callback.onComplete(output);
             } catch (Exception e) {
                 callback.onError(userMessage(e));
@@ -67,7 +84,7 @@ public final class DirectDownloader {
         }, "Waslora-download").start();
     }
 
-    private static File performDownload(Context context, URL url, Callback callback) throws Exception {
+    private static File performDownload(Context context, URL url, DownloadControl control, Callback callback) throws Exception {
         File directory = downloadsDirectory(context);
         if (!directory.exists() && !directory.mkdirs()) throw new Exception("تعذر إنشاء مجلد التنزيلات.");
         Probe probe = probe(url);
@@ -84,13 +101,14 @@ public final class DirectDownloader {
 
         if (probe.ranges && total >= PARALLEL_THRESHOLD) {
             try {
-                downloadRanges(url, part, total, callback);
+                downloadRanges(url, part, total, control, callback);
             } catch (Exception rangeError) {
+                if (control.isPaused()) throw rangeError;
                 if (part.exists()) part.delete();
-                downloadSequential(url, part, callback);
+                downloadSequential(url, part, control, callback);
             }
         } else {
-            downloadSequential(url, part, callback);
+            downloadSequential(url, part, control, callback);
         }
 
         if (!part.exists() || part.length() == 0) throw new Exception("لم يصل أي محتوى من رابط التنزيل.");
@@ -127,7 +145,7 @@ public final class DirectDownloader {
         return new Probe();
     }
 
-    private static void downloadRanges(URL url, File part, long total, Callback callback) throws Exception {
+    private static void downloadRanges(URL url, File part, long total, DownloadControl control, Callback callback) throws Exception {
         int count = (int) Math.min(MAX_PARALLEL_RANGES, Math.max(2, (total + PARALLEL_THRESHOLD - 1) / PARALLEL_THRESHOLD));
         long segmentSize = (total + count - 1) / count;
         AtomicLong done = new AtomicLong();
@@ -146,7 +164,7 @@ public final class DirectDownloader {
                     try {
                         connection = (HttpURLConnection) url.openConnection();
                         connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-                        connection.setReadTimeout(READ_TIMEOUT_MS);
+                        connection.setReadTimeout(2000);
                         connection.setRequestProperty("Range", "bytes=" + start + "-" + end);
                         connection.setInstanceFollowRedirects(true);
                         activeConnections.add(connection);
@@ -160,7 +178,11 @@ public final class DirectDownloader {
                             byte[] buffer = new byte[512 * 1024];
                             int read;
                             long written = 0;
-                            while ((read = input.read(buffer)) != -1) {
+                            while (true) {
+                                control.awaitRunning();
+                                try { read = input.read(buffer); }
+                                catch (SocketTimeoutException timeout) { control.awaitRunning(); continue; }
+                                if (read == -1) break;
                                 if (written + read > end - start + 1) read = (int) (end - start + 1 - written);
                                 output.write(buffer, 0, read);
                                 written += read;
@@ -170,6 +192,13 @@ public final class DirectDownloader {
                             }
                             if (written != end - start + 1) throw new IllegalStateException("short range");
                         }
+                    } catch (SocketTimeoutException timeout) {
+                        if (control.isPaused()) {
+                            try { control.awaitRunning(); }
+                            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new RuntimeException(interrupted); }
+                            throw new RuntimeException("range connection expired while paused");
+                        }
+                        throw new RuntimeException(timeout);
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     } finally {
@@ -190,11 +219,11 @@ public final class DirectDownloader {
         }
     }
 
-    private static void downloadSequential(URL url, File part, Callback callback) throws Exception {
+    private static void downloadSequential(URL url, File part, DownloadControl control, Callback callback) throws Exception {
         long existing = part.exists() ? part.length() : 0;
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(READ_TIMEOUT_MS);
+        connection.setReadTimeout(2000);
         connection.setInstanceFollowRedirects(true);
         if (existing > 0) connection.setRequestProperty("Range", "bytes=" + existing + "-");
         int status = connection.getResponseCode();
@@ -220,7 +249,14 @@ public final class DirectDownloader {
             byte[] buffer = new byte[512 * 1024];
             long done = existing;
             int read;
-            while ((read = input.read(buffer)) != -1) {
+            while (true) {
+                control.awaitRunning();
+                try { read = input.read(buffer); }
+                catch (SocketTimeoutException timeout) {
+                    control.awaitRunning();
+                    continue;
+                }
+                if (read == -1) break;
                 output.write(buffer, 0, read);
                 done += read;
                 callback.onProgress(done, total);
