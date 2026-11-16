@@ -43,18 +43,9 @@ The regression suite covers PCM 8/16-bit and float conversion, stereo downmixing
 
 ## GitHub and releases
 
-This repository uses Git LFS because the embedded Android AAR files are larger than GitHub's normal single-file limit. A Windows GitHub Actions workflow runs tests, builds a test APK, and can prepare a signed draft release when a version tag is pushed.
+This repository uses Git LFS because the embedded Android AAR files are larger than GitHub's normal single-file limit. GitHub Actions runs tests and builds an Android APK. Push a version tag such as `v0.4.1` to publish the APK on the repository's **Releases** page after the build passes.
 
-To enable signed GitHub releases:
-
-1. Create a private signing key and keep a secure backup. Never commit it:
-
-   ```powershell
-   keytool -genkeypair -v -keystore waslora-release.jks -alias waslora -keyalg RSA -keysize 2048 -validity 10000
-   ```
-
-2. In the GitHub repository, open **Settings → Secrets and variables → Actions** and add `WASLORA_RELEASE_KEYSTORE_BASE64`, `WASLORA_RELEASE_ALIAS`, `WASLORA_RELEASE_STORE_PASSWORD`, and `WASLORA_RELEASE_KEY_PASSWORD`. For the Base64 secret, encode the `.jks` file locally without committing or posting it.
-3. Push a version tag such as `v0.4.1`. Actions runs tests and creates a **draft** release with the signed APK attached. Review it on GitHub and publish when ready.
+The GitHub release APK is a debug-signed test build. It installs on Android, but a future APK signed with a different key cannot update it in place; uninstall the old test build first. For stable updates and store distribution, configure a private release keystore in GitHub Actions secrets and use a release-signing workflow. Never commit signing keys or passwords.
 
 For a local test build, use `build.ps1`. For a local signed release, set the `WASLORA_RELEASE_*` environment variables and run `build.ps1 -Release -VersionName 0.4.1 -VersionCode 6`.
 
@@ -65,7 +56,7 @@ git remote add origin https://github.com/USERNAME/Waslora.git
 git push -u origin main
 ```
 
-Install Git LFS before cloning or pushing. APKs and signing keys are intentionally ignored from source control. GitHub is the place for source code, issues, and release notes. Android users can download the signed release APK from Releases. iPhone users need TestFlight or the App Store; a GitHub repository alone cannot install an iOS app on their phones.
+Install Git LFS before cloning or pushing. APKs and signing keys are intentionally ignored from source control. GitHub is the place for source code, issues, and release notes. Android users can download the APK directly from Releases. iPhone users need TestFlight or the App Store; a GitHub repository alone cannot install an iOS app on their phones.
 
 ## Third-party notice
 

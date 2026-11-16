@@ -20,4 +20,4 @@ The iOS source project is an early preview. It supports direct file URLs, an in-
 
 - Android APKs are distributed as standalone downloads. Review Android's install warning and install only Waslora builds you trust.
 - Only download and convert content you own or have permission to save.
-- The first GitHub release is created as a draft so the maintainer can review the APK and notes before publishing.
+- The GitHub release is published automatically after its tagged build passes. The attached APK is a debug-signed test build; install it for testing, and uninstall it before installing a build signed with a different key.
