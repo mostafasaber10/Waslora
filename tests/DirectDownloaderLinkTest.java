@@ -13,6 +13,8 @@ public final class DirectDownloaderLinkTest {
         rejects(validate, "https://www.facebook.com/share/v/1QRaD6gwyz/", "Facebook share pages need a direct media URL");
         rejects(validate, "https://youtu.be/example", "YouTube pages must be identified");
         rejects(validate, "http://m.instagram.com/reel/example", "Instagram pages must be identified");
+        rejects(validate, "https://x.com/user/status/example.mp4", "X/Twitter media URLs must go through platform handling");
+        rejects(validate, "https://twitter.com/user/status/example.mp4", "Twitter media URLs must go through platform handling");
         rejects(validate, "ftp://cdn.example/video.mp4", "unsupported protocols must be rejected");
         Method userMessage = DirectDownloader.class.getDeclaredMethod("userMessage", Exception.class);
         userMessage.setAccessible(true);

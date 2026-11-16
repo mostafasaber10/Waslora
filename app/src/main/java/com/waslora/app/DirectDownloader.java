@@ -247,8 +247,9 @@ public final class DirectDownloader {
                 host.equals("youtu.be") || isHostOrSubdomain(host, "facebook.com") ||
                 isHostOrSubdomain(host, "fb.com") || host.equals("fb.watch") ||
                 isHostOrSubdomain(host, "instagram.com") || host.equals("instagr.am") ||
+                isHostOrSubdomain(host, "twitter.com") || isHostOrSubdomain(host, "x.com") ||
                 isHostOrSubdomain(host, "tiktok.com")) {
-            throw new Exception("رابط المشاركة من Facebook أو منصة أخرى هو صفحة، وليس ملف فيديو مباشرًا، لذلك لا يبدأ تنزيله هنا. إذا كانت المنصة تتيح تنزيل الفيديو، احفظه أولًا من تطبيقها الرسمي ثم شارك ملف الفيديو إلى Waslora أو اختره من «تحويل الصوت». للتنزيل هنا، ألصق رابط ملف MP4 مباشرًا.");
+            throw new Exception("هذا رابط تابع لمنصة فيديو وليس رابط ملف مباشرًا. ألصق رابط صفحة الفيديو ليحاول محرك Waslora تنزيله، أو استخدم رابط الملف المباشر.");
         }
     }
 
