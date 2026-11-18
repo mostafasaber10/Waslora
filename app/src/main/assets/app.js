@@ -97,6 +97,11 @@
         const share = document.createElement('button'); share.className = 'file-action'; share.textContent = 'مشاركة';
         share.addEventListener('click', () => nativeCall('shareDownload', [file.name], 'downloadStatus'));
         row.append(open, share);
+        if (fileCategory(file.name) === 'audio') {
+          const play = document.createElement('button'); play.className = 'file-action'; play.textContent = 'تشغيل / إيقاف';
+          play.addEventListener('click', () => nativeCall('playAudio', [file.name], 'downloadStatus'));
+          row.append(play);
+        }
         if (/\.(mp4|m4v|mov|mkv|webm|3gp)$/i.test(file.name)) {
           const convert = document.createElement('button'); convert.className = 'convert-button'; convert.textContent = 'استخراج الصوت';
           convert.addEventListener('click', () => { document.querySelector('[data-screen="convert"]').click(); bridge.convertDownloaded(file.name, $('audioFormat').value); });
@@ -172,6 +177,8 @@
       else if (type === 'convert-progress') showStatus('convertStatus', payload.message);
       else if (type === 'convert-complete') { showStatus('convertStatus', `اكتمل التحويل: ${payload.name} · ${payload.location || 'Download/Waslora'}`); loadFiles(); }
       else if (type === 'convert-error') showStatus('convertStatus', payload.message, true);
+      else if (type === 'audio-status') showStatus('downloadStatus', payload.message);
+      else if (type === 'audio-error') showStatus('downloadStatus', payload.message, true);
       else if (type === 'shared-video') {
         document.querySelector('[data-screen="convert"]').click();
         $('convertShared').classList.remove('hidden');

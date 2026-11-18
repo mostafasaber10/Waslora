@@ -43,7 +43,7 @@ Requires Node.js 18 or newer. No npm package is required for the scaffold:
 node .\server.js
 ```
 
-Set `WASLORA_RESOLVER_PORT` to choose another port. The default is `8787`. The server binds to `127.0.0.1` by default; set `WASLORA_RESOLVER_HOST=0.0.0.0` only when you deliberately expose it on a private network. Set `WASLORA_RESOLVER_TOKEN` to require a bearer token before deploying it outside the laptop.
+Set `WASLORA_RESOLVER_PORT` to choose another port. The default is `8787`. Docker listens on its container interface but publishes the host port to `127.0.0.1` by default, so the service is not reachable from other devices. Use `./start.ps1 -ExposeLan` only on a trusted private Wi-Fi network; it publishes the port to the LAN and prints a strong bearer token. For any public or untrusted network, place an HTTPS reverse proxy in front of the service, keep the backend private, and do not publish the plain HTTP port. A non-loopback bind also requires a token of at least 32 characters.
 
 ## Docker
 
@@ -57,7 +57,7 @@ docker compose up --build -d
 On Windows, `.\start.ps1` generates a strong token, starts Docker, and prints the laptop addresses and token to paste into the Android app:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\start.ps1
+powershell -ExecutionPolicy Bypass -File .\start.ps1 -ExposeLan
 ```
 
 The image includes FFmpeg and the latest `yt-dlp` at build time. Update the image periodically because platform extractors can change.

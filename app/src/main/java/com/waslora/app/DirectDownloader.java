@@ -10,6 +10,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLDecoder;
@@ -169,6 +170,7 @@ public final class DirectDownloader {
                         connection.setInstanceFollowRedirects(true);
                         activeConnections.add(connection);
                         int status = connection.getResponseCode();
+                        rejectPrivateHost(connection.getURL());
                         rejectPlatformUrl(connection.getURL());
                         if (isHtml(connection.getContentType())) throw new IllegalStateException("هذا رابط صفحة ويب وليس رابط ملف فيديو مباشر.");
                         if (status != HttpURLConnection.HTTP_PARTIAL) throw new IllegalStateException("range unsupported");
@@ -227,6 +229,7 @@ public final class DirectDownloader {
         connection.setInstanceFollowRedirects(true);
         if (existing > 0) connection.setRequestProperty("Range", "bytes=" + existing + "-");
         int status = connection.getResponseCode();
+        rejectPrivateHost(connection.getURL());
         rejectPlatformUrl(connection.getURL());
         if (isHtml(connection.getContentType())) {
             connection.disconnect();
@@ -273,8 +276,28 @@ public final class DirectDownloader {
         String scheme = url.getProtocol().toLowerCase(Locale.ROOT);
         if (!scheme.equals("http") && !scheme.equals("https")) throw new Exception("يجب أن يبدأ الرابط بـ http أو https.");
         if (url.getUserInfo() != null) throw new Exception("احذف اسم المستخدم وكلمة المرور من الرابط ثم أعد المحاولة.");
+        rejectPrivateHost(url);
         rejectPlatformUrl(url);
         return url;
+    }
+
+    /** Direct downloads must not be usable as an accidental LAN/localhost fetch primitive. */
+    private static void rejectPrivateHost(URL url) throws Exception {
+        String host = url.getHost();
+        if (host == null || host.trim().isEmpty() || "localhost".equalsIgnoreCase(host)) {
+            throw new Exception("لا يمكن تنزيل ملف من عنوان شبكة محلية أو جهازك نفسه.");
+        }
+        try {
+            for (InetAddress address : InetAddress.getAllByName(host)) {
+                if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress()
+                        || address.isSiteLocalAddress() || address.isMulticastAddress()) {
+                    throw new Exception("لا يمكن تنزيل ملف من عنوان شبكة محلية أو جهازك نفسه.");
+                }
+            }
+        } catch (java.net.UnknownHostException ignored) {
+            // Leave DNS failure to the normal downloader error so valid public
+            // hosts that are temporarily unavailable remain user-visible.
+        }
     }
 
     private static void rejectPlatformUrl(URL url) throws Exception {

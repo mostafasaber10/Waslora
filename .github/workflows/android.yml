@@ -39,6 +39,9 @@ jobs:
         shell: pwsh
         run: ./tests/run-tests.ps1
 
+      - name: Test Tata Store
+        run: npm --prefix tata-store test
+
       - name: Build test APK
         shell: pwsh
         run: ./build.ps1
@@ -55,15 +58,46 @@ jobs:
   publish-release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: verify
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     permissions:
       contents: write
     steps:
-      - name: Download Android APK
-        uses: actions/download-artifact@v4
+      - name: Check out source and Git LFS assets
+        uses: actions/checkout@v7
         with:
-          name: Waslora-Android-test
-          path: out
+          lfs: true
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: 'platforms;android-35 build-tools;36.0.0'
+
+      - name: Restore private release key
+        shell: pwsh
+        env:
+          RELEASE_KEY_BASE64: ${{ secrets.WASLORA_RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if (-not $env:RELEASE_KEY_BASE64) { throw 'Configure WASLORA_RELEASE_KEYSTORE_BASE64 before pushing a release tag.' }
+          $keyPath = Join-Path $env:RUNNER_TEMP 'waslora-release.jks'
+          [System.IO.File]::WriteAllBytes($keyPath, [Convert]::FromBase64String($env:RELEASE_KEY_BASE64))
+          "WASLORA_RELEASE_KEYSTORE=$keyPath" >> $env:GITHUB_ENV
+
+      - name: Build signed release APK
+        shell: pwsh
+        env:
+          WASLORA_RELEASE_ALIAS: ${{ secrets.WASLORA_RELEASE_ALIAS }}
+          WASLORA_RELEASE_STORE_PASSWORD: ${{ secrets.WASLORA_RELEASE_STORE_PASSWORD }}
+          WASLORA_RELEASE_KEY_PASSWORD: ${{ secrets.WASLORA_RELEASE_KEY_PASSWORD }}
+        run: |
+          if (-not $env:WASLORA_RELEASE_ALIAS -or -not $env:WASLORA_RELEASE_STORE_PASSWORD -or -not $env:WASLORA_RELEASE_KEY_PASSWORD) { throw 'Configure all WASLORA_RELEASE_* secrets before pushing a release tag.' }
+          $version = $env:GITHUB_REF_NAME.Substring(1)
+          ./build.ps1 -Release -VersionName $version -VersionCode $env:GITHUB_RUN_NUMBER
 
       - name: Publish downloadable GitHub Release
         uses: softprops/action-gh-release@v3
@@ -72,4 +106,4 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
-          files: out/Waslora-debug.apk
+          files: out/Waslora-v*.apk

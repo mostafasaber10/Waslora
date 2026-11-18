@@ -58,6 +58,10 @@ git push -u origin main
 
 Install Git LFS before cloning or pushing. APKs and signing keys are intentionally ignored from source control. GitHub is the place for source code, issues, and release notes. Android users can download the APK directly from Releases. iPhone users need TestFlight or the App Store; a GitHub repository alone cannot install an iOS app on their phones.
 
+## Tata Store
+
+The repository also includes an English-language app catalog and developer portal in [`tata-store`](tata-store/README.md). It starts with Waslora, supports developer accounts, APK publishing and updates, and per-app download-request analytics. Run it locally with `tata-store\Start-Store.ps1 -AdministratorEmail owner@example.com`, or deploy the Docker service behind HTTPS with persistent storage. It needs a web host and domain before anyone outside your network can use it; the included local JSON database is a single-instance starter, not a global-scale production backend.
+
 ## Third-party notice
 
 The embedded platform downloader (`youtubedl-android`, yt-dlp, and FFmpeg) is GPL-3.0; the full license and notices are included in `app/src/main/assets/licenses`. Anyone redistributing this build should review and follow GPL-3.0 obligations. The MP3 encoder is `lamejs` 1.2.1, bundled as the separate asset `app/src/main/assets/lame.min.js`. Its package metadata declares LGPL-3.0; the packaged project notice is in `vendor/LAME-LICENSE.txt`, and the source package is retained under `vendor/unpacked/package`. See the [upstream project](https://github.com/zhuker/lamejs) and [GNU LGPL-3.0 text](https://www.gnu.org/licenses/lgpl-3.0.en.html).

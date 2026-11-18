@@ -48,6 +48,7 @@ public final class AudioConverter {
                 if (!directory.exists() && !directory.mkdirs()) throw new Exception("تعذر إنشاء مجلد الملفات.");
                 File destination = unique(directory, baseName + ".m4a");
                 extractAac(context, source, destination, callback);
+                validateM4a(destination);
                 callback.onComplete(destination);
             } catch (Exception e) {
                 callback.onError(messageFor(e));
@@ -209,6 +210,7 @@ public final class AudioConverter {
             int outputTrack = muxer.addTrack(audioFormat);
             muxer.start();
             muxerStarted = true;
+            boolean wroteSamples = false;
             int max = audioFormat.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE) ? audioFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE) : 1024 * 1024;
             ByteBuffer buffer = ByteBuffer.allocateDirect(Math.max(64 * 1024, Math.min(max, 4 * 1024 * 1024)));
             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
@@ -221,6 +223,7 @@ public final class AudioConverter {
                 long time = extractor.getSampleTime();
                 info.set(0, size, time, extractor.getSampleFlags());
                 muxer.writeSampleData(outputTrack, buffer, info);
+                wroteSamples = true;
                 extractor.advance();
                 if (duration > 0 && time - lastReport > 2_000_000L) {
                     int percent = (int) Math.min(99, (time * 100) / duration);
@@ -228,6 +231,9 @@ public final class AudioConverter {
                     lastReport = time;
                 }
             }
+            if (!wroteSamples) throw new Exception("لم يحتوِ الفيديو على عينات صوتية قابلة للحفظ.");
+            muxer.stop();
+            muxerStarted = false;
             callback.onProgress("جارٍ إنهاء ملف الصوت…");
         } catch (Exception e) {
             if (output.exists()) output.delete();
@@ -269,15 +275,6 @@ public final class AudioConverter {
             decoder.start();
             decoderStarted = true;
 
-            MediaFormat encodeFormat = MediaFormat.createAudioFormat("audio/mp4a-latm", sampleRate, channels);
-            encodeFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
-            encodeFormat.setInteger(MediaFormat.KEY_BIT_RATE, 192000);
-            encodeFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 1024 * 1024);
-            encoder = MediaCodec.createEncoderByType("audio/mp4a-latm");
-            encoder.configure(encodeFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-            encoder.start();
-            encoderStarted = true;
-
             muxer = new MediaMuxer(output.getAbsolutePath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
             ArrayDeque<PcmChunk> pending = new ArrayDeque<>();
             MediaCodec.BufferInfo decoderInfo = new MediaCodec.BufferInfo();
@@ -286,6 +283,8 @@ public final class AudioConverter {
             boolean decoderEnded = false;
             boolean encoderInputEnded = false;
             boolean encoderEnded = false;
+            boolean wroteSamples = false;
+            long encodedFrames = 0;
             long lastProgress = 0;
 
             while (!encoderEnded) {
@@ -313,12 +312,20 @@ public final class AudioConverter {
                     sourceChannels = getInt(decodedFormat, MediaFormat.KEY_CHANNEL_COUNT, sourceChannels);
                     channels = sourceChannels == 1 ? 1 : 2;
                     pcmEncoding = getInt(decodedFormat, MediaFormat.KEY_PCM_ENCODING, pcmEncoding);
+                    if (!encoderStarted) {
+                        encoder = createAacEncoder(sampleRate, channels);
+                        encoderStarted = true;
+                    }
                 } else if (decodedIndex >= 0) {
                     if (decoderInfo.size > 0) {
+                        if (!encoderStarted) {
+                            encoder = createAacEncoder(sampleRate, channels);
+                            encoderStarted = true;
+                        }
                         ByteBuffer pcm = decoder.getOutputBuffer(decodedIndex);
                         if (pcm == null) throw new Exception("تعذر قراءة الصوت بعد فك ترميزه.");
                         byte[] bytes = PcmSamples.toPcm16(pcm, decoderInfo.offset, decoderInfo.size, pcmEncoding, sourceChannels);
-                        if (bytes.length > 0) pending.add(new PcmChunk(bytes, decoderInfo.presentationTimeUs));
+                        if (bytes.length > 0) pending.add(new PcmChunk(bytes));
                     }
                     if ((decoderInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) decoderEnded = true;
                     decoder.releaseOutputBuffer(decodedIndex, false);
@@ -333,13 +340,18 @@ public final class AudioConverter {
                     if (!pending.isEmpty()) {
                         PcmChunk chunk = pending.peek();
                         int count = Math.min(input.remaining(), chunk.data.length - chunk.offset);
+                        int frameBytes = channels * 2;
+                        count -= count % frameBytes;
+                        if (count <= 0) throw new Exception("تعذر محاذاة عينات الصوت لمشفر M4A.");
                         input.put(chunk.data, chunk.offset, count);
-                        long pts = chunk.presentationTimeUs;
                         chunk.offset += count;
                         if (chunk.offset >= chunk.data.length) pending.remove();
+                        long pts = encodedFrames * 1_000_000L / sampleRate;
+                        encodedFrames += count / frameBytes;
                         encoder.queueInputBuffer(inputIndex, 0, count, Math.max(0, pts), 0);
                     } else {
-                        encoder.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                        long pts = encodedFrames * 1_000_000L / sampleRate;
+                        encoder.queueInputBuffer(inputIndex, 0, 0, pts, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
                         encoderInputEnded = true;
                     }
                 }
@@ -362,6 +374,7 @@ public final class AudioConverter {
                             encoded.position(encoderInfo.offset);
                             encoded.limit(encoderInfo.offset + encoderInfo.size);
                             muxer.writeSampleData(0, encoded, encoderInfo);
+                            wroteSamples = true;
                         }
                     }
                     if ((encoderInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) encoderEnded = true;
@@ -374,6 +387,9 @@ public final class AudioConverter {
                 }
             }
             if (!muxerStarted) throw new Exception("لم ينتج محرك الصوت ملفًا صالحًا.");
+            if (!wroteSamples) throw new Exception("لم ينتج محرك M4A عينات صوتية.");
+            muxer.stop();
+            muxerStarted = false;
             callback.onProgress("جارٍ إنهاء ملف M4A…");
         } catch (Exception e) {
             if (output.exists()) output.delete();
@@ -397,11 +413,43 @@ public final class AudioConverter {
 
     private static final class PcmChunk {
         final byte[] data;
-        final long presentationTimeUs;
         int offset;
-        PcmChunk(byte[] data, long presentationTimeUs) {
-            this.data = data;
-            this.presentationTimeUs = presentationTimeUs;
+        PcmChunk(byte[] data) { this.data = data; }
+    }
+
+    private static MediaCodec createAacEncoder(int sampleRate, int channels) throws Exception {
+        MediaFormat format = MediaFormat.createAudioFormat("audio/mp4a-latm", sampleRate, channels);
+        format.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 192000);
+        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 1024 * 1024);
+        MediaCodec codec = MediaCodec.createEncoderByType("audio/mp4a-latm");
+        try {
+            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+            codec.start();
+            return codec;
+        } catch (Exception error) {
+            try { codec.release(); } catch (Exception ignored) {}
+            throw error;
+        }
+    }
+
+    private static void validateM4a(File file) throws Exception {
+        if (!file.isFile() || file.length() <= 0) throw new Exception("ملف M4A الناتج فارغ أو غير موجود.");
+        MediaExtractor verifier = new MediaExtractor();
+        try {
+            verifier.setDataSource(file.getAbsolutePath());
+            int audioTrack = findAudioTrack(verifier);
+            if (audioTrack < 0) throw new Exception("ملف M4A الناتج لا يحتوي على مسار صوت صالح.");
+            verifier.selectTrack(audioTrack);
+            ByteBuffer sample = ByteBuffer.allocateDirect(256 * 1024);
+            int size = verifier.readSampleData(sample, 0);
+            if (size <= 0) throw new Exception("ملف M4A الناتج لا يحتوي على عينات صوت قابلة للتشغيل.");
+        } catch (Exception error) {
+            if (file.exists()) file.delete();
+            if (error.getMessage() != null && error.getMessage().startsWith("ملف M4A")) throw error;
+            throw new Exception("تعذر التحقق من ملف M4A الناتج؛ أعد التحويل أو جرّب MP3.", error);
+        } finally {
+            try { verifier.release(); } catch (Exception ignored) {}
         }
     }
 

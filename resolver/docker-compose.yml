@@ -2,8 +2,11 @@ services:
   waslora-resolver:
     build: .
     ports:
-      - "8787:8787"
+      - "${WASLORA_RESOLVER_BIND:-127.0.0.1}:8787:8787"
     environment:
+      # The process must listen on the container interface; the host port remains loopback-only by default.
+      WASLORA_RESOLVER_HOST: ${WASLORA_RESOLVER_HOST:-0.0.0.0}
+      WASLORA_RESOLVER_ALLOW_INSECURE_LAN: ${WASLORA_RESOLVER_ALLOW_INSECURE_LAN:-true}
       WASLORA_RESOLVER_TOKEN: ${WASLORA_RESOLVER_TOKEN:?Set WASLORA_RESOLVER_TOKEN in the environment}
       WASLORA_MAX_JOBS: ${WASLORA_MAX_JOBS:-2}
       WASLORA_MAX_DURATION_SECONDS: ${WASLORA_MAX_DURATION_SECONDS:-7200}

@@ -6,6 +6,7 @@ import android.content.ClipData;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -39,6 +40,8 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_NOTIFICATIONS = 102;
     private static final int REQUEST_PICK_TRANSFER_FILES = 103;
     private WebView webView;
+    private MediaPlayer audioPlayer;
+    private String audioPlayerName;
     private volatile boolean pageReady;
     private volatile Uri pendingSharedVideo;
     private volatile boolean downloadActive;
@@ -207,6 +210,64 @@ public final class MainActivity extends Activity {
         if (view == null || !pageReady) return;
         String eventJson = JSONObject.quote(event);
         view.post(() -> view.evaluateJavascript("window.WasloraUI&&window.WasloraUI.onEvent(" + eventJson + "," + payload + ");", null));
+    }
+
+    private void releaseAudioPlayer() {
+        MediaPlayer current = audioPlayer;
+        audioPlayer = null;
+        audioPlayerName = null;
+        if (current != null) {
+            try { current.setOnPreparedListener(null); } catch (Exception ignored) {}
+            try { current.setOnCompletionListener(null); } catch (Exception ignored) {}
+            try { current.setOnErrorListener(null); } catch (Exception ignored) {}
+            try { current.release(); } catch (Exception ignored) {}
+        }
+    }
+
+    private void playAudioFile(File file) {
+        if (audioPlayer != null && file.getName().equals(audioPlayerName)) {
+            try {
+                if (audioPlayer.isPlaying()) {
+                    audioPlayer.pause();
+                    emit("audio-status", json("message", "تم إيقاف الصوت مؤقتًا."));
+                } else {
+                    audioPlayer.start();
+                    emit("audio-status", json("message", "يعمل الآن: " + file.getName()));
+                }
+            } catch (Exception error) {
+                releaseAudioPlayer();
+                emit("audio-error", json("message", "تعذر تشغيل ملف الصوت على هذا الهاتف."));
+            }
+            return;
+        }
+
+        releaseAudioPlayer();
+        MediaPlayer player = new MediaPlayer();
+        audioPlayer = player;
+        audioPlayerName = file.getName();
+        player.setOnPreparedListener(prepared -> {
+            if (audioPlayer != prepared) return;
+            prepared.start();
+            emit("audio-status", json("message", "يعمل الآن: " + file.getName()));
+        });
+        player.setOnCompletionListener(completed -> {
+            if (audioPlayer != completed) return;
+            releaseAudioPlayer();
+            emit("audio-status", json("message", "انتهى تشغيل الصوت."));
+        });
+        player.setOnErrorListener((failed, what, extra) -> {
+            if (audioPlayer == failed) releaseAudioPlayer();
+            emit("audio-error", json("message", "تعذر تشغيل ملف الصوت. أعد تحويل الفيديو أو جرّب MP3."));
+            return true;
+        });
+        try {
+            player.setDataSource(file.getAbsolutePath());
+            player.prepareAsync();
+            emit("audio-status", json("message", "جارٍ تجهيز الصوت…"));
+        } catch (Exception error) {
+            releaseAudioPlayer();
+            emit("audio-error", json("message", "تعذر فتح ملف الصوت الناتج."));
+        }
     }
 
     void startMp3Encoder(String jobId, int sampleRate, int channels, int bitrate) {
@@ -407,6 +468,13 @@ public final class MainActivity extends Activity {
                     });
                 } catch (Exception e) { emit("file-error", json("message", "تعذر إظهار الملف في مجلد Download/Waslora.")); }
             }, "Waslora-open-file").start();
+        }
+
+        @JavascriptInterface
+        public void playAudio(String name) {
+            File file = fileFromDownloads(name);
+            if (file == null) { emit("audio-error", json("message", "لم أجد ملف الصوت داخل Waslora.")); return; }
+            runOnUiThread(() -> playAudioFile(file));
         }
 
         @JavascriptInterface
@@ -652,7 +720,7 @@ public final class MainActivity extends Activity {
     private void emitPublishedFile(String event, File file) {
         new Thread(() -> {
             boolean published = false;
-            try { published = PublicFileStore.publish(MainActivity.this, file) != null; }
+            try { published = PublicFileStore.publish(MainActivity.this, file, "convert-complete".equals(event)) != null; }
             catch (Exception ignored) {}
             JSONObject payload = new JSONObject();
             try {
@@ -683,6 +751,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         pageReady = false;
+        releaseAudioPlayer();
         if (webView != null) { webView.removeJavascriptInterface("Waslora"); webView.destroy(); webView = null; }
         super.onDestroy();
     }

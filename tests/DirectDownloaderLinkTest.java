@@ -16,6 +16,8 @@ public final class DirectDownloaderLinkTest {
         rejects(validate, "https://x.com/user/status/example.mp4", "X/Twitter media URLs must go through platform handling");
         rejects(validate, "https://twitter.com/user/status/example.mp4", "Twitter media URLs must go through platform handling");
         rejects(validate, "ftp://cdn.example/video.mp4", "unsupported protocols must be rejected");
+        rejects(validate, "http://127.0.0.1/video.mp4", "loopback direct URLs must be rejected");
+        rejects(validate, "http://192.168.1.1/video.mp4", "private-network direct URLs must be rejected");
         Method userMessage = DirectDownloader.class.getDeclaredMethod("userMessage", Exception.class);
         userMessage.setAccessible(true);
         String readable = (String) userMessage.invoke(null, new IOException("unexpected end of stream on com.android.okhttp.Address@123"));

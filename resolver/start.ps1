@@ -1,5 +1,6 @@
 param(
-    [string]$Token
+    [string]$Token,
+    [switch]$ExposeLan
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,6 +16,9 @@ if ([string]::IsNullOrWhiteSpace($Token)) {
 }
 
 $env:WASLORA_RESOLVER_TOKEN = $Token
+$env:WASLORA_RESOLVER_HOST = '0.0.0.0'
+$env:WASLORA_RESOLVER_BIND = if ($ExposeLan) { '0.0.0.0' } else { '127.0.0.1' }
+$env:WASLORA_RESOLVER_ALLOW_INSECURE_LAN = 'true'
 Push-Location $PSScriptRoot
 try {
     docker compose up --build -d
@@ -30,9 +34,9 @@ $addresses = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue 
 Write-Host ''
 Write-Host 'Waslora Resolver is running.' -ForegroundColor Green
 Write-Host "Token: $Token"
-if ($addresses) {
+if ($ExposeLan -and $addresses) {
     foreach ($address in $addresses) { Write-Host "Address for the Android app: http://${address}:8787" }
 } else {
-    Write-Host 'Find the laptop IPv4 address and use http://<address>:8787 in the Android app.'
+    Write-Host 'The Resolver is bound to this laptop only. Use an HTTPS reverse proxy or rerun with -ExposeLan only on a trusted private Wi-Fi network.'
 }
 Write-Host 'Keep this token private. Stop it with: docker compose down'

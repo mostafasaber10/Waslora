@@ -25,6 +25,7 @@ ios/Waslora.xcodeproj/project.xcworkspace/xcuserdata/
 *.xcuserstate
 
 # Signing material
+.release/
 *.p12
 *.mobileprovision
 *.cer

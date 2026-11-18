@@ -40,8 +40,13 @@ import java.security.SecureRandom;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public final class LocalTransferService extends Service {
     public static final String ACTION_START = "com.waslora.app.TRANSFER_START";
@@ -52,9 +57,14 @@ public final class LocalTransferService extends Service {
     // storage remains the final limit, and uploads are written to a .part file
     // until the request completes.
     private static final long MAX_UPLOAD_BYTES = 100L * 1024L * 1024L * 1024L;
+    private static final int MAX_HEADER_COUNT = 64;
+    private static final int MAX_HEADER_BYTES = 64 * 1024;
+    private static final Object UPLOAD_RESERVATION_LOCK = new Object();
+    private static final Set<String> RESERVED_UPLOAD_NAMES = ConcurrentHashMap.newKeySet();
     private volatile boolean stopping;
     private volatile ServerSocket serverSocket;
     private ExecutorService clients;
+    private final Set<Socket> activeSockets = ConcurrentHashMap.newKeySet();
     private PowerManager.WakeLock cpuWakeLock;
     private WifiManager.WifiLock wifiLock;
 
@@ -82,7 +92,10 @@ public final class LocalTransferService extends Service {
 
     @Override public void onCreate() {
         super.onCreate();
-        clients = Executors.newFixedThreadPool(8);
+        // A bounded handoff pool prevents an attacker on the LAN from filling
+        // an unbounded executor queue with idle sockets.
+        clients = new ThreadPoolExecutor(0, 8, 60L, TimeUnit.SECONDS,
+                new SynchronousQueue<>(), new ThreadPoolExecutor.AbortPolicy());
         createNotificationChannel();
     }
 
@@ -108,7 +121,11 @@ public final class LocalTransferService extends Service {
         Thread thread = new Thread(() -> {
             ServerSocket listener = null;
             try {
-                listener = new ServerSocket(0, 16, InetAddress.getByName("0.0.0.0"));
+                String bindAddress = localIpv4(this);
+                if (bindAddress.isEmpty()) throw new Exception("لم أجد عنوان Wi-Fi أو Ethernet صالحًا.");
+                // Bind only to the active local interface. This keeps the
+                // short-lived HTTP transfer endpoint off unrelated interfaces.
+                listener = new ServerSocket(0, 16, InetAddress.getByName(bindAddress));
                 listener.setSoTimeout(1000);
                 serverSocket = listener;
                 String token = randomToken();
@@ -117,7 +134,13 @@ public final class LocalTransferService extends Service {
                     try {
                         Socket socket = listener.accept();
                         socket.setSoTimeout(120000);
-                        clients.execute(() -> serveClient(socket, token));
+                        activeSockets.add(socket);
+                        try {
+                            clients.execute(() -> serveClient(socket, token));
+                        } catch (RejectedExecutionException rejected) {
+                            activeSockets.remove(socket);
+                            try { socket.close(); } catch (Exception ignored) {}
+                        }
                     } catch (java.net.SocketTimeoutException ignored) {}
                 }
             } catch (Exception e) {
@@ -142,6 +165,10 @@ public final class LocalTransferService extends Service {
         stopping = true;
         ServerSocket current = serverSocket;
         if (current != null) try { current.close(); } catch (Exception ignored) {}
+        for (Socket socket : activeSockets) {
+            try { socket.close(); } catch (Exception ignored) {}
+        }
+        activeSockets.clear();
         releaseTransferLocks();
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("running", false).remove("port").remove("token").remove("error").apply();
     }
@@ -180,12 +207,30 @@ public final class LocalTransferService extends Service {
             if (parts.length < 2) { respond(output, 400, "Bad Request", "text/plain", "Bad Request".getBytes("UTF-8")); return; }
             String method = parts[0].toUpperCase(Locale.ROOT);
             String target = parts[1];
+            if (target.length() > 8192) { respond(output, 414, "URI Too Long", "text/plain", "URI Too Long".getBytes("UTF-8")); return; }
             java.util.Map<String, String> headers = new java.util.HashMap<>();
             String line;
+            int headerCount = 0;
+            int headerBytes = 0;
             while ((line = readLine(input, 8192)) != null && !line.isEmpty()) {
+                headerCount++;
+                headerBytes += line.length();
+                if (headerCount > MAX_HEADER_COUNT || headerBytes > MAX_HEADER_BYTES) {
+                    respond(output, 431, "Request Header Fields Too Large", "text/plain", "Request headers too large".getBytes("UTF-8"));
+                    return;
+                }
                 int colon = line.indexOf(':');
-                if (colon > 0) headers.put(line.substring(0, colon).trim().toLowerCase(Locale.ROOT), line.substring(colon + 1).trim());
+                if (colon > 0) {
+                    String headerName = line.substring(0, colon).trim().toLowerCase(Locale.ROOT);
+                    String headerValue = line.substring(colon + 1).trim();
+                    if (headers.containsKey(headerName) && ("content-length".equals(headerName) || "transfer-encoding".equals(headerName))) {
+                        respond(output, 400, "Bad Request", "text/plain", "Duplicate upload length headers".getBytes("UTF-8"));
+                        return;
+                    }
+                    headers.put(headerName, headerValue);
+                }
             }
+            if (line == null) { respond(output, 400, "Bad Request", "text/plain", "Bad Request".getBytes("UTF-8")); return; }
             int queryAt = target.indexOf('?');
             String path = queryAt >= 0 ? target.substring(0, queryAt) : target;
             String query = queryAt >= 0 ? target.substring(queryAt + 1) : "";
@@ -195,9 +240,21 @@ public final class LocalTransferService extends Service {
             if ("GET".equals(method) && (route.isEmpty() || route.equals("index.html"))) { serveHtml(output); return; }
             if ("GET".equals(method) && route.equals("api/files")) { serveFileList(output); return; }
             if ("GET".equals(method) && route.startsWith("file/")) { serveDownload(route.substring(5), headers, output); return; }
-            if ("POST".equals(method) && route.equals("upload")) { receiveUpload(query, headers, input, output); return; }
+            if ("POST".equals(method) && route.equals("upload")) {
+                String origin = headers.get("origin");
+                String host = headers.get("host");
+                if (origin != null && !origin.isEmpty() && (host == null || !origin.equalsIgnoreCase("http://" + host))) {
+                    respond(output, 403, "Forbidden", "text/plain", "Cross-origin upload rejected".getBytes("UTF-8"));
+                    return;
+                }
+                receiveUpload(query, headers, input, output);
+                return;
+            }
             respond(output, 404, "Not Found", "text/plain", "Not Found".getBytes("UTF-8"));
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        } finally {
+            activeSockets.remove(socket);
+        }
     }
 
     private void serveHtml(OutputStream output) throws Exception {
@@ -250,6 +307,10 @@ public final class LocalTransferService extends Service {
                 .append("Content-Length: ").append(length).append("\r\n")
                 .append("Content-Disposition: ").append(disposition).append("\r\n")
                 .append("Accept-Ranges: bytes\r\n");
+        response.append("X-Content-Type-Options: nosniff\r\n")
+                .append("X-Frame-Options: DENY\r\n")
+                .append("Referrer-Policy: no-referrer\r\n")
+                .append("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'\r\n");
         if (partial) response.append("Content-Range: bytes ").append(start).append('-').append(end).append('/').append(file.length()).append("\r\n");
         response.append("Cache-Control: no-store\r\nConnection: close\r\n\r\n");
         output.write(response.toString().getBytes("UTF-8"));
@@ -268,19 +329,33 @@ public final class LocalTransferService extends Service {
         String name = safeName(URLDecoder.decode(encoded, "UTF-8"));
         if (name.isEmpty()) { respond(output, 400, "Bad Request", "application/json", "{\"error\":\"invalid filename\"}".getBytes("UTF-8")); return; }
         File directory = DirectDownloader.downloadsDirectory(this);
-        File target = unique(directory, name);
-        File part = new File(directory, target.getName() + ".part");
+        File target = reserveTarget(directory, name);
+        File part;
+        try { part = File.createTempFile(".waslora-upload-", ".part", directory); }
+        catch (Exception error) { releaseTarget(target); throw error; }
         long received = 0;
         try (FileOutputStream file = new FileOutputStream(part)) {
             received = HttpUploadBody.copy(input, file, headers.get("content-length"), headers.get("transfer-encoding"), MAX_UPLOAD_BYTES);
             file.flush();
         } catch (HttpUploadBody.UploadException e) {
             part.delete();
+            releaseTarget(target);
             String reason = e.status == 413 ? "Payload Too Large" : e.status == 411 ? "Length Required" : "Bad Request";
             respond(output, e.status, reason, "text/plain", new byte[0]);
             return;
-        } catch (Exception e) { part.delete(); throw e; }
-        if (!part.renameTo(target)) { part.delete(); respond(output, 500, "Internal Server Error", "text/plain", new byte[0]); return; }
+        } catch (Exception e) { part.delete(); releaseTarget(target); throw e; }
+        synchronized (UPLOAD_RESERVATION_LOCK) {
+            // Rename only after the complete body is written. The filename is
+            // reserved in memory, so in-progress uploads never appear in the
+            // phone's file list and concurrent uploads cannot collide.
+            if (target.exists() || !part.renameTo(target)) {
+                part.delete();
+                RESERVED_UPLOAD_NAMES.remove(target.getAbsolutePath());
+                respond(output, 500, "Internal Server Error", "text/plain", new byte[0]);
+                return;
+            }
+            RESERVED_UPLOAD_NAMES.remove(target.getAbsolutePath());
+        }
         PublicFileStore.publishInBackground(this, target);
         JSONObject result = new JSONObject(); result.put("ok", true); result.put("name", target.getName()); result.put("size", received);
         respond(output, 201, "Created", "application/json; charset=utf-8", result.toString().getBytes("UTF-8"));
@@ -309,18 +384,30 @@ public final class LocalTransferService extends Service {
         return name;
     }
 
-    private static File unique(File directory, String name) {
-        File file = new File(directory, name);
-        if (!file.exists()) return file;
-        int dot = name.lastIndexOf('.'); String stem = dot > 0 ? name.substring(0, dot) : name; String ext = dot > 0 ? name.substring(dot) : "";
-        int i = 1; do { file = new File(directory, stem + " (" + i++ + ")" + ext); } while (file.exists());
-        return file;
+    private static File reserveTarget(File directory, String name) throws Exception {
+        synchronized (UPLOAD_RESERVATION_LOCK) {
+            File file = new File(directory, name);
+            if (!file.exists() && RESERVED_UPLOAD_NAMES.add(file.getAbsolutePath())) return file;
+            int dot = name.lastIndexOf('.'); String stem = dot > 0 ? name.substring(0, dot) : name; String ext = dot > 0 ? name.substring(dot) : "";
+            int i = 1;
+            do { file = new File(directory, stem + " (" + i++ + ")" + ext); }
+            while (file.exists() || !RESERVED_UPLOAD_NAMES.add(file.getAbsolutePath()));
+            return file;
+        }
+    }
+
+    private static void releaseTarget(File target) {
+        if (target != null) RESERVED_UPLOAD_NAMES.remove(target.getAbsolutePath());
     }
 
     private static void respond(OutputStream output, int code, String status, String type, byte[] body) throws Exception {
         String headers = "HTTP/1.1 " + code + " " + status + "\r\n" +
                 "Content-Type: " + type + "\r\n" +
                 "Content-Length: " + body.length + "\r\n" +
+                "X-Content-Type-Options: nosniff\r\n" +
+                "X-Frame-Options: DENY\r\n" +
+                "Referrer-Policy: no-referrer\r\n" +
+                "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'\r\n" +
                 "Cache-Control: no-store\r\n" +
                 "Connection: close\r\n\r\n";
         output.write(headers.getBytes("UTF-8")); output.write(body); output.flush();

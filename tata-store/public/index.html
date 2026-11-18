@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c0d12">
+  <meta name="description" content="Discover thoughtful apps from Tata Studios and independent developers around the world.">
+  <title>Tata Store — Apps made to move you</title>
+  <link rel="icon" href="/assets/tata-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div class="site-shell">
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="Tata Store home">
+        <img src="/assets/tata-mark.svg" alt="" width="40" height="40">
+        <span>TATA<span class="brand-light">STORE</span></span>
+      </a>
+      <nav class="main-nav" id="mainNav" aria-label="Main navigation">
+        <a class="nav-link active" href="#home" data-nav="home">Discover</a>
+        <a class="nav-link" href="#apps" data-nav="apps">Apps</a>
+        <a class="nav-link" href="#developers" data-nav="developers">Developers</a>
+      </nav>
+      <div class="header-actions">
+        <button class="button button-quiet account-button" id="accountButton" type="button">Developer sign in</button>
+        <button class="button button-primary header-submit" id="headerSubmit" type="button">Submit an app <span aria-hidden="true">↗</span></button>
+        <button class="menu-button" id="menuButton" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" id="home">
+        <div class="hero-glow hero-glow-one"></div><div class="hero-glow hero-glow-two"></div>
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="eyebrow-dot"></span> A home for apps with a point of view</div>
+          <h1>Good apps.<br><span>Good company.</span></h1>
+          <p>Find useful tools from Tata Studios and independent creators. Made to be discovered, built to be shared.</p>
+          <div class="hero-actions">
+            <a class="button button-lime" href="#apps">Explore the store <span aria-hidden="true">↓</span></a>
+            <a class="hero-link" href="#developers">Building something? <span>Meet your dashboard ↗</span></a>
+          </div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="orbit orbit-a"></div><div class="orbit orbit-b"></div>
+          <div class="hero-tile tile-back"><span class="tile-kicker">MADE FOR YOU</span><i>✳</i></div>
+          <div class="hero-tile tile-main"><img src="/assets/tata-mark.svg" alt=""><span class="tile-small">DISCOVER<br>WHAT'S NEXT</span><b>TATA<br>STORE</b></div>
+          <div class="floating-tag tag-one"><span class="tag-spark">✦</span> Curated finds</div>
+          <div class="floating-tag tag-two"><span class="tag-dot"></span> Creators welcome</div>
+          <div class="art-star star-one">✳</div><div class="art-star star-two">✦</div>
+        </div>
+        <div class="hero-bottom"><span>INDEPENDENT IDEAS. ONE PLACE.</span><span>SCROLL TO EXPLORE&nbsp; ↓</span></div>
+      </section>
+
+      <section class="content-section store-section" id="apps">
+        <div class="section-heading">
+          <div><div class="section-kicker">THE STORE</div><h2>Find your next <span>favorite.</span></h2><p>Small tools. Big ideas. All in one place.</p></div>
+          <div class="catalog-count" id="catalogCount">A growing collection <span>✳</span></div>
+        </div>
+        <div class="store-tools">
+          <label class="search-box"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Search apps, creators, categories..." autocomplete="off"><kbd>⌘ K</kbd></label>
+          <div class="category-list" id="categoryList" aria-label="Filter apps by category"></div>
+          <div class="sort-row"><span id="resultsLabel">Featured apps</span><label class="sort-select">Sort by <select id="sortSelect"><option value="featured">Featured</option><option value="popular">Most downloaded</option><option value="newest">Newest</option><option value="name">Name A–Z</option></select></label></div>
+        </div>
+        <div class="app-grid" id="appGrid" aria-live="polite"><div class="loading-card">Finding good things for you…</div></div>
+        <div class="load-more-wrap hidden" id="loadMoreWrap"><button class="button button-quiet" id="loadMoreButton" type="button">Load more apps <span>↓</span></button></div>
+        <div class="empty-state hidden" id="emptyState"><div class="empty-icon">⌕</div><h3>No apps found</h3><p>Try another search or choose a different category.</p><button class="button button-quiet" id="clearFilters" type="button">Clear filters</button></div>
+      </section>
+
+      <section class="creator-banner" id="developers">
+        <div class="banner-decoration" aria-hidden="true"><span>✳</span><span>✦</span><span>✳</span><div></div></div>
+        <div class="banner-copy"><div class="section-kicker light-kicker">FOR THE PEOPLE WHO BUILD</div><h2>Your app deserves<br>a little <em>spotlight.</em></h2><p>Publish your Android app, tell your story, and see how people find it. Your developer dashboard keeps it all in one place.</p><div class="banner-actions"><button class="button button-lime" id="developerCta" type="button">Open developer portal <span>↗</span></button><span class="banner-note">Free to get started · Always yours</span></div></div>
+        <div class="dashboard-preview" aria-hidden="true"><div class="preview-top"><span>DASHBOARD PREVIEW</span><i>•••</i></div><div class="preview-title">Your app overview</div><div class="preview-app"><span class="preview-app-icon">✳</span><span><b>Your next app</b><small>Review status and download history</small></span><span class="preview-status">PREVIEW</span></div><div class="preview-metrics"><div><small>DOWNLOAD REQUESTS</small><b>—</b><span>Counts appear after publishing</span></div><div class="chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></div>
+      </section>
+
+      <section class="values-strip"><div><span>✳</span><b>Made for discovery</b><small>Find something useful today.</small></div><div><span>↗</span><b>Built by people</b><small>Independent creators belong here.</small></div><div><span>◎</span><b>Your work, your numbers</b><small>Keep an eye on every download.</small></div></section>
+    </main>
+
+    <footer class="footer"><a class="brand footer-brand" href="#home"><img src="/assets/tata-mark.svg" alt="" width="34" height="34"><span>TATA<span class="brand-light">STORE</span></span></a><span>Apps with a little more thought. © <span id="year"></span> Tata Store.</span><div><a href="#developers">For developers</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="#home">Back to top ↑</a></div></footer>
+  </div>
+
+  <dialog class="modal" id="authDialog" aria-labelledby="authTitle">
+    <form method="dialog"><button class="modal-close" aria-label="Close" value="close">×</button></form>
+    <div class="modal-brand"><img src="/assets/tata-mark.svg" alt="" width="44" height="44"><span>YOUR CREATOR SPACE</span></div>
+    <div class="modal-tabs"><button class="modal-tab active" id="loginTab" type="button">Sign in</button><button class="modal-tab" id="registerTab" type="button">Create account</button></div>
+    <h2 id="authTitle">Welcome back.</h2><p class="modal-subtitle" id="authSubtitle">Sign in to manage your apps and see your downloads.</p>
+    <form id="authForm" class="form-stack">
+      <label id="displayNameField" class="hidden">Studio or creator name<input name="displayName" type="text" autocomplete="organization" maxlength="50" placeholder="Your studio name"></label>
+      <label id="setupTokenField" class="hidden">Store administrator setup key <span class="optional-label">Only for the store owner</span><input name="adminSetupToken" type="password" autocomplete="off" maxlength="200" placeholder="Leave blank for a developer account"></label>
+      <label>Email address<input name="email" type="email" autocomplete="email" placeholder="you@example.com" required></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" minlength="12" placeholder="At least 12 characters" required></label>
+      <button class="button button-primary full-button" id="authSubmit" type="submit">Sign in <span>→</span></button>
+      <p class="form-message" id="authMessage" role="status"></p>
+    </form>
+    <p class="privacy-note">By continuing, you agree to publish only apps you have the right to share.</p>
+  </dialog>
+
+  <dialog class="modal modal-wide" id="developerDialog" aria-labelledby="developerTitle">
+    <form method="dialog"><button class="modal-close" aria-label="Close" value="close">×</button></form>
+    <div class="dashboard-head"><div><div class="section-kicker">YOUR CREATOR SPACE</div><h2 id="developerTitle">Developer dashboard</h2><p>Manage your apps and see download activity.</p></div><div class="account-actions"><button class="text-button" id="claimAdminButton" type="button">Set up store admin</button><button class="text-button danger-button" id="deleteAccountButton" type="button">Delete account</button><button class="button button-quiet" id="signOutButton" type="button">Sign out</button></div></div>
+    <div class="dashboard-summary"><div><small>YOUR APPS</small><b id="dashAppCount">0</b></div><div><small>TOTAL DOWNLOADS</small><b id="dashDownloads">0</b></div><div><small>THIS MONTH</small><b id="dashMonthDownloads">0</b></div></div>
+    <section class="admin-review hidden" id="adminReview"><div class="dash-section-title"><div><div class="section-kicker">STORE ADMIN</div><h3>Review queue</h3><p>New apps and updates stay private until approved.</p></div><button class="button button-quiet" type="button" id="refreshAdmin">Refresh</button></div><div id="reviewAppList" class="review-list"></div><div class="dash-section-title report-heading"><div><h3>Open reports</h3><p>Review reports sent by store visitors.</p></div></div><div id="reportList" class="review-list"></div></section>
+    <div class="dashboard-columns"><section><div class="dash-section-title"><div><h3>Your apps</h3><p>Each app has its own public page and download stats.</p></div><button class="button button-primary" id="showUploadButton" type="button">+ Add an app</button></div><div class="developer-app-list" id="developerAppList"></div></section>
+      <section class="upload-panel hidden" id="uploadPanel"><div class="dash-section-title"><div><h3 id="uploadFormTitle">Publish an Android app</h3><p>Add your app details and signed APK package.</p></div><button class="text-button" type="button" id="cancelUpload">Cancel</button></div><form id="uploadForm" class="form-stack upload-form">
+        <label>App name<input name="name" maxlength="60" placeholder="My brilliant app" required></label>
+        <label>Short description<input name="tagline" maxlength="110" placeholder="What makes it worth a download?" required></label>
+        <label>About this app<textarea name="description" maxlength="3000" rows="4" placeholder="Tell people what it does and who it is for." required></textarea></label>
+        <div class="form-pair"><label>Category<select name="category" required><option value="">Choose a category</option><option>Tools</option><option>Video & Audio</option><option>Productivity</option><option>Photo & Design</option><option>Education</option><option>Games</option><option>Lifestyle</option><option>Other</option></select></label><label>Version<input name="version" maxlength="20" placeholder="1.0.0" required></label></div>
+        <label>App icon URL <span class="optional-label">Optional</span><input name="iconUrl" type="url" placeholder="https://example.com/icon.png"></label>
+        <label class="file-drop"><input name="package" type="file" accept=".apk,application/vnd.android.package-archive" required><span class="file-symbol">↑</span><b>Choose an installable APK</b><small>Android package · Maximum 300 MB</small><span class="file-name" id="fileName">No file selected</span></label>
+        <label class="rights-check"><input type="checkbox" name="rights" required><span>I own or have permission to distribute this app, and the package contains no unlawful or harmful content.</span></label>
+        <button class="button button-lime full-button" type="submit" id="publishButton">Publish app <span>↗</span></button><p class="form-message" id="uploadMessage" role="status"></p>
+      </form></section>
+    </div>
+    <p class="analytics-note">Download totals count package download requests. They do not measure installations or unique people.</p>
+  </dialog>
+
+  <dialog class="modal detail-modal" id="detailDialog" aria-labelledby="detailTitle"><form method="dialog"><button class="modal-close" aria-label="Close" value="close">×</button></form><div id="detailContent"></div></dialog>
+  <div class="toast hidden" id="toast" role="status"></div>
+</body>
+</html>

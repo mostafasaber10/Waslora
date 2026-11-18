@@ -81,6 +81,9 @@ public final class LocalPlatformDownloader {
                     !("http".equalsIgnoreCase(parsed.getScheme()) || "https".equalsIgnoreCase(parsed.getScheme()))) {
                 throw new Exception("أدخل رابطًا كاملًا يبدأ بـ http أو https.");
             }
+            if (!ResolverClient.isPlatformUrl(job.pageUrl)) {
+                throw new Exception("أرسل رابط صفحة فيديو عامة من YouTube أو Facebook أو Instagram أو TikTok أو منصة مدعومة.");
+            }
             job.callback.onProgress("جارٍ تجهيز محرك التنزيل داخل الهاتف…");
             ensureInitialized(job.context);
             File directory = DirectDownloader.downloadsDirectory(job.context);

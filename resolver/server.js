@@ -16,6 +16,11 @@ const MAX_CONCURRENT = Math.max(1, Math.min(16, Number(process.env.WASLORA_MAX_J
 const MAX_DURATION_SECONDS = Math.max(60, Number(process.env.WASLORA_MAX_DURATION_SECONDS || 7200));
 const MAX_FILE_BYTES = Math.max(64 * 1024 * 1024, Number(process.env.WASLORA_MAX_FILE_BYTES || 100 * 1024 * 1024 * 1024));
 const JOB_TTL_MS = Math.max(5 * 60 * 1000, Number(process.env.WASLORA_JOB_TTL_MS || 30 * 60 * 1000));
+const configuredRuntime = Number(process.env.WASLORA_MAX_RUNTIME_MS);
+const MAX_JOB_RUNTIME_MS = Number.isFinite(configuredRuntime)
+  ? Math.max(2 * 60 * 1000, configuredRuntime)
+  : (MAX_DURATION_SECONDS + 120) * 1000;
+const ALLOW_INSECURE_LAN = process.env.WASLORA_RESOLVER_ALLOW_INSECURE_LAN === 'true';
 const VERSION = '0.2.0';
 let YTDLP_PREFIX = [];
 try {
@@ -51,6 +56,9 @@ function json(response, status, body) {
     'Content-Length': payload.length,
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
   });
   response.end(payload);
 }
@@ -150,6 +158,12 @@ function startDownload(job) {
   ];
   const child = spawn(binary, [...YTDLP_PREFIX, ...args], { cwd: job.directory, windowsHide: true, shell: false, stdio: ['ignore', 'ignore', 'pipe'] });
   job.process = child;
+  job.timeout = setTimeout(() => {
+    if (!job.process || job.state !== 'downloading') return;
+    job.cancelled = true;
+    job.error = 'استغرق التنزيل وقتًا أطول من الحد المسموح للخادم.';
+    try { job.process.kill('SIGTERM'); } catch (_) {}
+  }, MAX_JOB_RUNTIME_MS);
   let stderr = '';
   let lineBuffer = '';
   child.stderr.setEncoding('utf8');
@@ -162,6 +176,7 @@ function startDownload(job) {
     updateProgress(job, lineBuffer);
   });
   child.on('error', (error) => {
+    if (job.timeout) clearTimeout(job.timeout);
     job.state = 'error';
     job.error = error.code === 'ENOENT'
       ? 'خدمة التنزيل غير مثبتة على الخادم. شغّل إعداد Docker الموجود في المشروع.'
@@ -171,7 +186,11 @@ function startDownload(job) {
     activeJobs--;
   });
   child.on('close', (code) => {
+    if (job.timeout) clearTimeout(job.timeout);
     if (job.cancelled) {
+      job.state = 'error';
+      job.error ||= 'تم إلغاء مهمة التنزيل.';
+      job.finishedAt = Date.now();
       if (job.process !== null) activeJobs = Math.max(0, activeJobs - 1);
       job.process = null;
       return;
@@ -302,14 +321,29 @@ const server = http.createServer((request, response) => {
   });
 });
 
+server.requestTimeout = 30_000;
+server.headersTimeout = 15_000;
+server.keepAliveTimeout = 5_000;
+server.maxRequestsPerSocket = 100;
+
 fs.mkdirSync(ROOT, { recursive: true, mode: 0o700 });
-if (HOST !== '127.0.0.1' && !TOKEN) {
+const isLoopbackHost = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1';
+if (!isLoopbackHost && !TOKEN) {
   throw new Error('Set WASLORA_RESOLVER_TOKEN before binding the Resolver outside localhost.');
+}
+if (!isLoopbackHost && TOKEN.length < 32) {
+  throw new Error('WASLORA_RESOLVER_TOKEN must be at least 32 characters outside localhost.');
+}
+if (!isLoopbackHost && !ALLOW_INSECURE_LAN) {
+  throw new Error('Resolver is plain HTTP. Keep it on localhost or set WASLORA_RESOLVER_ALLOW_INSECURE_LAN=true only on a trusted private LAN; use HTTPS for public access.');
 }
 server.listen(PORT, HOST, () => process.stdout.write(`Waslora Resolver listening on http://${HOST}:${PORT}\n`));
 setInterval(cleanupExpiredJobs, 60_000).unref();
 
 process.on('SIGTERM', () => {
-  for (const job of jobs.values()) if (job.process) job.process.kill('SIGTERM');
+  for (const job of jobs.values()) {
+    if (job.timeout) clearTimeout(job.timeout);
+    if (job.process) job.process.kill('SIGTERM');
+  }
   server.close(() => process.exit(0));
 });

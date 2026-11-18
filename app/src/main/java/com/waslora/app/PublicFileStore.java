@@ -22,22 +22,35 @@ public final class PublicFileStore {
     private PublicFileStore() {}
 
     public static Uri publish(Context context, File source) throws Exception {
+        return publish(context, source, false);
+    }
+
+    /** Publishes newly completed content, optionally replacing a prior public file with the same name. */
+    public static Uri publish(Context context, File source, boolean replaceExisting) throws Exception {
         if (source == null || !source.isFile() || source.length() <= 0) throw new Exception("الملف غير موجود أو فارغ.");
         if (Build.VERSION.SDK_INT < 29) return null;
         ContentResolver resolver = context.getContentResolver();
         Uri existing = find(resolver, source.getName());
-        if (existing != null) return existing;
+        if (existing != null && !replaceExisting) return existing;
         String name = source.getName();
         String mime = mimeType(name);
-        ContentValues values = new ContentValues();
-        values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
-        values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-        values.put(MediaStore.MediaColumns.RELATIVE_PATH, RELATIVE_PATH);
-        values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-        Uri destination = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-        if (destination == null) throw new Exception("تعذر إنشاء ملف ظاهر في مجلد التنزيلات.");
+        Uri destination = existing;
+        if (destination == null) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, RELATIVE_PATH);
+            values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+            destination = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (destination == null) throw new Exception("تعذر إنشاء ملف ظاهر في مجلد التنزيلات.");
+        } else {
+            ContentValues pending = new ContentValues();
+            pending.put(MediaStore.MediaColumns.IS_PENDING, 1);
+            pending.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+            resolver.update(destination, pending, null, null);
+        }
         boolean complete = false;
-        try (InputStream input = new FileInputStream(source); OutputStream output = resolver.openOutputStream(destination)) {
+        try (InputStream input = new FileInputStream(source); OutputStream output = resolver.openOutputStream(destination, "wt")) {
             if (output == null) throw new Exception("تعذر فتح ملف التنزيل.");
             byte[] buffer = new byte[512 * 1024];
             int read;

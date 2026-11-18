@@ -1,0 +1,21 @@
+services:
+  tata-store:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8840
+      TATA_STORE_STORAGE: /data
+      TATA_STORE_ADMIN_EMAIL: ${TATA_STORE_ADMIN_EMAIL:?Set TATA_STORE_ADMIN_EMAIL in .env before starting the store}
+      TATA_STORE_ADMIN_SETUP_TOKEN: ${TATA_STORE_ADMIN_SETUP_TOKEN:?Set a private TATA_STORE_ADMIN_SETUP_TOKEN in .env}
+      TATA_STORE_REQUIRE_APKSIGNER: ${TATA_STORE_REQUIRE_APKSIGNER:-true}
+      TATA_STORE_APKSIGNER: ${TATA_STORE_APKSIGNER:-}
+      TATA_STORE_ALLOWED_CERT_SHA256: ${TATA_STORE_ALLOWED_CERT_SHA256:-}
+    ports:
+      - "127.0.0.1:8840:8840"
+    volumes:
+      - tata-store-data:/data
+
+volumes:
+  tata-store-data:
