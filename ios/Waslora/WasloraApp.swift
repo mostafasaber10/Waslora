@@ -3,6 +3,7 @@ import UIKit
 
 @main
 struct WasloraApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @UIApplicationDelegateAdaptor(WasloraAppDelegate.self) private var appDelegate
     @StateObject private var downloads = DownloadManager.shared
     @StateObject private var library = LibraryStore()
@@ -16,6 +17,10 @@ struct WasloraApp: App {
                 .environmentObject(transfer)
                 .tint(Color(red: 0.12, green: 0.70, blue: 0.65))
                 .onAppear { library.reload() }
+                .onChange(of: scenePhase) { phase in
+                    if phase == .background { transfer.stop() }
+                    if phase == .active { library.reload() }
+                }
         }
     }
 }

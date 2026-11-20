@@ -1,0 +1,144 @@
+name: iOS build check
+
+on:
+  push:
+    branches: [main, 'ios/**']
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    name: Verify iOS and package Simulator app and unsigned device IPA
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Select Xcode 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcode_app=$(printf '%s\n' /Applications/Xcode_26*.app | sort | tail -n 1)
+          if [[ ! -d "$xcode_app/Contents/Developer" ]]; then
+            echo 'Xcode 26 is required but was not found on this runner.' >&2
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode_app/Contents/Developer"
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Validate app metadata
+        run: plutil -lint ios/Waslora/Info.plist
+
+      - name: Check file integrity and M4A decoding on macOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/ios
+          xcrun --sdk macosx swiftc -swift-version 5 -target "$(uname -m)-apple-macosx13.0" \
+            ios/Waslora/Models.swift \
+            ios/Waslora/AudioConverter.swift \
+            ios/tests/CoreSmoke.swift \
+            -o build/ios/core-smoke 2>&1 | tee build/ios/core-smoke-build.log
+          build/ios/core-smoke 2>&1 | tee build/ios/core-smoke.log
+
+      - name: Build unsigned Simulator app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/ios
+          xcodebuild \
+            -project ios/Waslora.xcodeproj \
+            -scheme Waslora \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee build/ios/xcodebuild.log
+
+      - name: Package Simulator app
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/ios/Build/Products/Debug-iphonesimulator/Waslora.app \
+            build/ios/Waslora-iOS-Simulator.zip
+
+      - name: Save Simulator app (requires a Mac; not an iPhone installer)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Waslora-iOS-Simulator
+          path: build/ios/Waslora-iOS-Simulator.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build unsigned iPhone device app
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project ios/Waslora.xcodeproj \
+            -scheme Waslora \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios-device \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee build/ios/iphoneos-xcodebuild.log
+
+      - name: Validate and package unsigned device IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          device_app='build/ios-device/Build/Products/Release-iphoneos/Waslora.app'
+          device_platform=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$device_app/Info.plist")
+          if [[ "$device_platform" != 'iPhoneOS' ]]; then
+            echo 'The IPA must contain an iPhoneOS device app, not a Simulator app.' >&2
+            exit 1
+          fi
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$device_app/Info.plist")
+          xcrun lipo -verify_arch arm64 "$device_app/$executable"
+          package_root=$(mktemp -d "$RUNNER_TEMP/waslora-ipa.XXXXXX")
+          trap 'rm -rf "$package_root"' EXIT
+          mkdir -p "$package_root/Payload"
+          ditto "$device_app" "$package_root/Payload/Waslora.app"
+          ditto -c -k --keepParent "$package_root/Payload" build/ios/Waslora-iOS-unsigned.ipa
+          unzip -t build/ios/Waslora-iOS-unsigned.ipa
+          (cd build/ios && shasum -a 256 Waslora-iOS-unsigned.ipa > Waslora-iOS-unsigned.ipa.sha256)
+
+      - name: Save unsigned iPhone IPA (requires re-signing before installation)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Waslora-iOS-unsigned-requires-signing
+          path: |
+            build/ios/Waslora-iOS-unsigned.ipa
+            build/ios/Waslora-iOS-unsigned.ipa.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Save build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Waslora-iOS-build-log
+          path: build/ios/*.log
+          if-no-files-found: ignore
+          retention-days: 14

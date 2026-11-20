@@ -23,6 +23,8 @@ enum MediaCategory: String, CaseIterable, Identifiable {
 }
 
 enum WasloraFiles {
+    private static let saveLock = NSLock()
+
     static var directory: URL {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let folder = documents.appendingPathComponent("Waslora", isDirectory: true)
@@ -31,7 +33,7 @@ enum WasloraFiles {
     }
 
     static func uniqueURL(for name: String, in directory: URL = directory) -> URL {
-        let safeName = URL(fileURLWithPath: name).lastPathComponent
+        let safeName = safeFilename(name)
         let candidate = directory.appendingPathComponent(safeName)
         guard FileManager.default.fileExists(atPath: candidate.path) else { return candidate }
         let ext = candidate.pathExtension
@@ -43,6 +45,37 @@ enum WasloraFiles {
             if !FileManager.default.fileExists(atPath: next.path) { return next }
             index += 1
         }
+    }
+
+    // All writers share this lock so simultaneous downloads, conversions and
+    // transfers with the same filename cannot replace one another.
+    static func commitTemporaryFile(_ temporaryURL: URL, named name: String, in directory: URL = directory) throws -> URL {
+        saveLock.lock()
+        defer { saveLock.unlock() }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let destination = uniqueURL(for: name, in: directory)
+        try FileManager.default.moveItem(at: temporaryURL, to: destination)
+        return destination
+    }
+
+    static func importFile(_ source: URL) throws -> URL {
+        let ownsAccess = source.startAccessingSecurityScopedResource()
+        defer { if ownsAccess { source.stopAccessingSecurityScopedResource() } }
+        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        var coordinationError: NSError?
+        var copyError: Error?
+        NSFileCoordinator(filePresenter: nil).coordinate(readingItemAt: source, options: [], error: &coordinationError) { readableURL in
+            do {
+                guard try readableURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+                    throw NSError(domain: "WasloraFiles", code: 1, userInfo: [NSLocalizedDescriptionKey: "اختر ملفًا وليس مجلدًا."])
+                }
+                try FileManager.default.copyItem(at: readableURL, to: temporary)
+            } catch { copyError = error }
+        }
+        if let coordinationError { throw coordinationError }
+        if let copyError { throw copyError }
+        return try commitTemporaryFile(temporary, named: source.lastPathComponent)
     }
 
     static func safeFilename(_ value: String) -> String {

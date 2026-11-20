@@ -6,6 +6,6 @@ let package = Package(
     platforms: [.iOS(.v16)],
     products: [.library(name: "WasloraIOSSources", targets: ["WasloraIOSSources"])],
     targets: [
-        .target(name: "WasloraIOSSources", path: "Waslora", exclude: ["WasloraApp.swift", "Views.swift", "Info.plist"])
+        .target(name: "WasloraIOSSources", path: "Waslora", exclude: ["WasloraApp.swift", "Views.swift", "Info.plist", "Assets.xcassets"])
     ]
 )

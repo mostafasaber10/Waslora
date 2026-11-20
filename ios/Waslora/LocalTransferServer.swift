@@ -10,57 +10,78 @@ final class LocalTransferServer: ObservableObject {
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.waslora.ios.local-transfer", qos: .userInitiated)
-    private var token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    // All listener, connection, and file finalization work stays on this serial queue.
+    private var connections: [UUID: TransferConnection] = [:]
 
     func start() {
-        guard listener == nil else { return }
-        do {
-            token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-            let newListener = try NWListener(using: .tcp, on: .any)
-            newListener.newConnectionHandler = { [weak self] connection in
-                guard let self else { connection.cancel(); return }
-                TransferConnection(connection: connection, token: self.token, directory: WasloraFiles.directory).start()
-            }
-            newListener.stateUpdateHandler = { [weak self] state in
-                guard let self else { return }
-                switch state {
-                case .ready:
-                    guard let port = newListener.port, let ip = Self.localIPv4() else {
-                        DispatchQueue.main.async { self.message = "تعذر العثور على عنوان Wi‑Fi. تحقق من اتصال الآيفون والكمبيوتر بالشبكة نفسها." }
+        queue.async { [weak self] in
+            guard let self, self.listener == nil else { return }
+            do {
+                let token = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+                let directory = WasloraFiles.directory
+                let newListener = try NWListener(using: .tcp, on: .any)
+                newListener.newConnectionHandler = { [weak self, weak newListener] connection in
+                    guard let self, let newListener, self.listener === newListener,
+                          self.connections.count < 16 else {
+                        connection.cancel()
                         return
                     }
-                    DispatchQueue.main.async {
-                        self.address = "http://\(ip):\(port.rawValue)/\(self.token)/"
-                        self.isRunning = true
-                        self.message = "افتح الرابط في متصفح الكمبيوتر المتصل بالشبكة نفسها."
+                    let id = UUID()
+                    let transfer = TransferConnection(connection: connection, token: token,
+                                                      directory: directory, queue: self.queue) { [weak self] in
+                        self?.connections.removeValue(forKey: id)
                     }
-                case .failed(let error):
-                    DispatchQueue.main.async {
-                        self.message = "تعذر تشغيل النقل: \(error.localizedDescription)"
-                        self.isRunning = false
-                        self.address = nil
-                    }
-                    newListener.cancel()
-                    self.listener = nil
-                case .cancelled:
-                    DispatchQueue.main.async { self.isRunning = false; self.address = nil }
-                default: break
+                    self.connections[id] = transfer
+                    transfer.start()
                 }
+                newListener.stateUpdateHandler = { [weak self, weak newListener] state in
+                    guard let self, let newListener, self.listener === newListener else { return }
+                    switch state {
+                    case .ready:
+                        guard let port = newListener.port, let ip = Self.localIPv4() else {
+                            self.stopOnQueue(message: "تعذر العثور على عنوان Wi‑Fi. تحقق من اتصال الآيفون والكمبيوتر بالشبكة نفسها.")
+                            return
+                        }
+                        self.publish(address: "http://\(ip):\(port.rawValue)/\(token)/",
+                                     message: "افتح الرابط في متصفح الكمبيوتر المتصل بالشبكة نفسها.")
+                    case .failed(let error):
+                        self.stopOnQueue(message: "تعذر تشغيل النقل: \(error.localizedDescription)")
+                    case .cancelled:
+                        self.stopOnQueue(message: "تم إيقاف النقل المحلي.")
+                    default:
+                        break
+                    }
+                }
+                self.listener = newListener
+                self.publish(address: nil, message: "جارٍ تشغيل صفحة النقل المحلية…")
+                newListener.start(queue: self.queue)
+            } catch {
+                self.publish(address: nil, message: "تعذر تشغيل النقل المحلي: \(error.localizedDescription)")
             }
-            listener = newListener
-            newListener.start(queue: queue)
-            DispatchQueue.main.async { self.message = "جارٍ تشغيل صفحة النقل المحلية…" }
-        } catch {
-            message = "تعذر تشغيل النقل المحلي: \(error.localizedDescription)"
         }
     }
 
     func stop() {
+        queue.async { [weak self] in self?.stopOnQueue(message: "تم إيقاف النقل المحلي.") }
+    }
+
+    private func stopOnQueue(message: String) {
+        listener?.newConnectionHandler = nil
+        listener?.stateUpdateHandler = nil
         listener?.cancel()
         listener = nil
-        address = nil
-        isRunning = false
-        message = "تم إيقاف النقل المحلي."
+        let active = Array(connections.values)
+        connections.removeAll()
+        active.forEach { $0.cancel() }
+        publish(address: nil, message: message)
+    }
+
+    private func publish(address: String?, message: String) {
+        DispatchQueue.main.async { [weak self] in
+            self?.address = address
+            self?.isRunning = address != nil
+            self?.message = message
+        }
     }
 
     private static func localIPv4() -> String? {
@@ -86,180 +107,322 @@ private final class TransferConnection {
     private let connection: NWConnection
     private let token: String
     private let directory: URL
+    private let queue: DispatchQueue
+    private var onFinish: (() -> Void)?
+    private var timeout: DispatchSourceTimer?
     private var buffer = Data()
     private var expectedBytes: Int64 = 0
     private var receivedBytes: Int64 = 0
     private var uploadHandle: FileHandle?
+    private var downloadHandle: FileHandle?
+    private var downloadBytesRemaining: Int64 = 0
     private var temporaryURL: URL?
-    private var finalURL: URL?
-    private var requestPath = ""
+    private var uploadName: String?
+    private var didRespond = false
+    private var finished = false
+    private static let headerLimit = 32 * 1024
+    private static let uploadLimit: Int64 = 100 * 1024 * 1024 * 1024
 
-    init(connection: NWConnection, token: String, directory: URL) {
+    init(connection: NWConnection, token: String, directory: URL, queue: DispatchQueue,
+         onFinish: @escaping () -> Void) {
         self.connection = connection
         self.token = token
-        self.directory = directory
+        self.directory = directory.resolvingSymlinksInPath().standardizedFileURL
+        self.queue = queue
+        self.onFinish = onFinish
     }
 
     func start() {
-        connection.start(queue: .global(qos: .userInitiated))
+        connection.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .failed, .cancelled:
+                self?.cancel()
+            default:
+                break
+            }
+        }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.setEventHandler { [weak self] in self?.cancel() }
+        timeout = timer
+        resetTimeout()
+        timer.resume()
+        connection.start(queue: queue)
         receive()
     }
 
+    func cancel() {
+        guard !finished else { return }
+        finished = true
+        timeout?.setEventHandler {}
+        timeout?.cancel()
+        timeout = nil
+        cleanupUpload()
+        try? downloadHandle?.close()
+        downloadHandle = nil
+        connection.stateUpdateHandler = nil
+        connection.cancel()
+        let completion = onFinish
+        onFinish = nil
+        completion?()
+    }
+
+    private func resetTimeout() {
+        timeout?.schedule(deadline: .now() + 60)
+    }
+
     private func receive() {
+        guard !finished, !didRespond else { return }
         connection.receive(minimumIncompleteLength: 1, maximumLength: 256 * 1024) { [weak self] data, _, isComplete, error in
-            guard let self else { return }
-            if let error { self.fail(error.localizedDescription); return }
+            guard let self, !self.finished else { return }
+            if error != nil { self.cancel(); return }
             if let data, !data.isEmpty {
+                self.resetTimeout()
                 if self.uploadHandle != nil { self.consumeUpload(data) }
                 else { self.buffer.append(data); self.parseRequestIfReady() }
             }
+            // A client may half-close its request side while still awaiting our response.
+            guard !self.finished, !self.didRespond else { return }
             if isComplete {
-                if self.uploadHandle != nil && self.receivedBytes < self.expectedBytes { self.fail("اكتمل الاتصال قبل نهاية الملف.") }
-                else if self.uploadHandle == nil { self.connection.cancel() }
-            } else if self.connection.state != .cancelled && !self.didRespond {
+                self.reject(status: 400, reason: "Bad Request", message: "انقطع الطلب قبل اكتمال البيانات.")
+            } else {
                 self.receive()
             }
         }
     }
 
-    private var didRespond = false
-
     private func parseRequestIfReady() {
-        guard !didRespond,
-              let marker = buffer.range(of: Data([13, 10, 13, 10])) else {
-            if buffer.count > 32 * 1024 { respond(status: 431, reason: "Request Header Fields Too Large", body: Data()) }
+        guard !didRespond, !finished else { return }
+        guard let marker = buffer.range(of: Data([13, 10, 13, 10])) else {
+            if buffer.count > Self.headerLimit {
+                reject(status: 431, reason: "Request Header Fields Too Large")
+            }
+            return
+        }
+        guard marker.lowerBound <= Self.headerLimit else {
+            reject(status: 431, reason: "Request Header Fields Too Large")
             return
         }
         let headerData = buffer.subdata(in: 0..<marker.lowerBound)
         let body = buffer.subdata(in: marker.upperBound..<buffer.endIndex)
         buffer.removeAll(keepingCapacity: false)
-        guard let text = String(data: headerData, encoding: .utf8) else { respond(status: 400, reason: "Bad Request", body: Data()); return }
+        guard let text = String(data: headerData, encoding: .utf8),
+              !text.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            reject(status: 400, reason: "Bad Request"); return
+        }
         let lines = text.components(separatedBy: "\r\n")
         let first = lines.first?.split(separator: " ") ?? []
-        guard first.count >= 2 else { respond(status: 400, reason: "Bad Request", body: Data()); return }
-        let method = String(first[0]).uppercased()
+        guard first.count == 3, first[2] == "HTTP/1.1" || first[2] == "HTTP/1.0" else {
+            reject(status: 400, reason: "Bad Request"); return
+        }
+        let method = String(first[0])
         let target = String(first[1])
-        let headers = Dictionary(lines.dropFirst().compactMap { line -> (String, String)? in
-            guard let colon = line.firstIndex(of: ":") else { return nil }
-            return (line[..<colon].lowercased().trimmingCharacters(in: .whitespaces), line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces))
-        }, uniquingKeysWith: { _, latest in latest })
-        guard let components = URLComponents(string: "http://local\(target)") else { respond(status: 400, reason: "Bad Request", body: Data()); return }
-        requestPath = components.percentEncodedPath.removingPercentEncoding ?? components.path
+        var headers: [String: String] = [:]
+        let fieldCharacters = CharacterSet(charactersIn: "!#$%&'*+-.^_\u{0060}|~0123456789abcdefghijklmnopqrstuvwxyz")
+        for line in lines.dropFirst() {
+            guard let colon = line.firstIndex(of: ":") else {
+                reject(status: 400, reason: "Bad Request"); return
+            }
+            let name = String(line[..<colon]).lowercased()
+            let value = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, name.unicodeScalars.allSatisfy({ fieldCharacters.contains($0) }),
+                  !value.unicodeScalars.contains(where: { $0.value < 32 && $0.value != 9 || $0.value == 127 }),
+                  headers[name] == nil else {
+                reject(status: 400, reason: "Bad Request"); return
+            }
+            headers[name] = value
+        }
+        guard first[2] != "HTTP/1.1" || !(headers["host"] ?? "").isEmpty else {
+            reject(status: 400, reason: "Bad Request"); return
+        }
+        // Browser File uploads have a known Content-Length. Reject ambiguous framing.
+        guard headers["transfer-encoding"] == nil else {
+            reject(status: 501, reason: "Not Implemented", message: "أرسل الملف بطول Content-Length محدد."); return
+        }
+        guard headers["expect"] == nil else {
+            reject(status: 417, reason: "Expectation Failed"); return
+        }
+        var contentLength: Int64 = 0
+        if let length = headers["content-length"] {
+            guard !length.isEmpty, length.utf8.allSatisfy({ (48...57).contains($0) }),
+                  let parsed = Int64(length) else {
+                reject(status: 400, reason: "Bad Request"); return
+            }
+            contentLength = parsed
+        }
+        guard target.hasPrefix("/"), !target.hasPrefix("//"),
+              let components = URLComponents(string: target),
+              components.scheme == nil, components.host == nil, components.fragment == nil,
+              let requestPath = components.percentEncodedPath.removingPercentEncoding,
+              !requestPath.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 }) else {
+            reject(status: 400, reason: "Bad Request"); return
+        }
         let prefix = "/\(token)/"
         guard requestPath.hasPrefix(prefix) else { respond(status: 403, reason: "Forbidden", body: Data()); return }
         let route = String(requestPath.dropFirst(prefix.count))
-
-        if method == "GET" && (route.isEmpty || route == "index.html") { respond(status: 200, reason: "OK", type: "text/html; charset=utf-8", body: Data(Self.page.utf8)); return }
-        if method == "GET" && route == "api/files" { sendFileList(); return }
-        if method == "GET" && route.hasPrefix("file/") { sendFile(named: String(route.dropFirst(5))); return }
-        if method == "POST" && route == "upload" { beginUpload(components: components, headers: headers, initialBody: body); return }
+        if method == "POST" && route == "upload" {
+            guard headers["content-length"] != nil else {
+                reject(status: 411, reason: "Length Required"); return
+            }
+            beginUpload(components: components, contentLength: contentLength, initialBody: body)
+            return
+        }
+        guard method == "GET" || method == "HEAD" else {
+            reject(status: 405, reason: "Method Not Allowed"); return
+        }
+        guard contentLength == 0, body.isEmpty else {
+            reject(status: 400, reason: "Bad Request"); return
+        }
+        let headOnly = method == "HEAD"
+        if route.isEmpty || route == "index.html" {
+            respond(status: 200, reason: "OK", type: "text/html; charset=utf-8",
+                    body: Data(Self.page.utf8), headOnly: headOnly); return
+        }
+        if route == "api/files" { sendFileList(headOnly: headOnly); return }
+        if route.hasPrefix("file/") { sendFile(named: String(route.dropFirst(5)), headOnly: headOnly); return }
         respond(status: 404, reason: "Not Found", body: Data())
     }
 
-    private func beginUpload(components: URLComponents, headers: [String: String], initialBody: Data) {
-        guard let value = components.queryItems?.first(where: { $0.name == "name" })?.value, !value.isEmpty else {
-            respond(status: 400, reason: "Bad Request", body: Data("filename required".utf8)); return
+    private func beginUpload(components: URLComponents, contentLength: Int64, initialBody: Data) {
+        let names = components.queryItems?.filter { $0.name == "name" } ?? []
+        guard names.count == 1, let value = names.first?.value, !value.isEmpty else {
+            reject(status: 400, reason: "Bad Request", message: "filename required"); return
         }
-        guard let contentLength = Int64(headers["content-length"] ?? ""), contentLength >= 0 else {
-            respond(status: 411, reason: "Length Required", body: Data()); return
+        guard contentLength <= Self.uploadLimit else {
+            reject(status: 413, reason: "Payload Too Large"); return
         }
-        guard contentLength <= 100 * 1024 * 1024 * 1024 else {
-            respond(status: 413, reason: "Payload Too Large", body: Data()); return
+        guard Int64(initialBody.count) <= contentLength else {
+            reject(status: 400, reason: "Bad Request"); return
         }
         expectedBytes = contentLength
-        finalURL = WasloraFiles.uniqueURL(for: WasloraFiles.safeFilename(value), in: directory)
-        temporaryURL = finalURL!.appendingPathExtension("part")
-        FileManager.default.createFile(atPath: temporaryURL!.path, contents: nil)
-        do { uploadHandle = try FileHandle(forWritingTo: temporaryURL!) }
-        catch { respond(status: 500, reason: "Internal Server Error", body: Data()); return }
-        consumeUpload(initialBody)
+        uploadName = WasloraFiles.safeFilename(value)
+        let temporary = directory.appendingPathComponent(".upload-\(UUID().uuidString).part")
+        // O_EXCL prevents an existing path or symlink from being reused.
+        let descriptor = Darwin.open(temporary.path, O_CREAT | O_EXCL | O_WRONLY, mode_t(0o600))
+        guard descriptor >= 0 else {
+            reject(status: 500, reason: "Internal Server Error", message: "تعذر إنشاء الملف المؤقت."); return
+        }
+        temporaryURL = temporary
+        uploadHandle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         if expectedBytes == 0 { finishUpload() }
+        else { consumeUpload(initialBody) }
     }
 
     private func consumeUpload(_ data: Data) {
-        guard let uploadHandle, receivedBytes < expectedBytes else { return }
+        guard !finished, !didRespond, let uploadHandle else { return }
         let remaining = expectedBytes - receivedBytes
-        let count = min(data.count, Int(min(remaining, Int64(Int.max))))
+        guard Int64(data.count) <= remaining else {
+            reject(status: 400, reason: "Bad Request", message: "حجم الملف لا يطابق Content-Length."); return
+        }
         do {
-            try uploadHandle.write(contentsOf: data.prefix(count))
-            receivedBytes += Int64(count)
+            try uploadHandle.write(contentsOf: data)
+            receivedBytes += Int64(data.count)
             if receivedBytes == expectedBytes { finishUpload() }
-        } catch { fail(error.localizedDescription) }
+        } catch { reject(status: 500, reason: "Transfer Failed", message: error.localizedDescription) }
     }
 
     private func finishUpload() {
-        guard !didRespond, let uploadHandle, let temporaryURL, let finalURL else { return }
+        guard !finished, !didRespond, let uploadHandle, let temporaryURL, let uploadName else { return }
         do {
             try uploadHandle.synchronize()
             try uploadHandle.close()
             self.uploadHandle = nil
-            try FileManager.default.moveItem(at: temporaryURL, to: finalURL)
-            let payload: [String: Any] = ["ok": true, "name": finalURL.lastPathComponent, "size": receivedBytes]
+            let saved = try WasloraFiles.commitTemporaryFile(temporaryURL, named: uploadName, in: directory)
+            self.temporaryURL = nil
+            let payload: [String: Any] = ["ok": true, "name": saved.lastPathComponent, "size": receivedBytes]
             let data = (try? JSONSerialization.data(withJSONObject: payload)) ?? Data("{}".utf8)
             respond(status: 201, reason: "Created", type: "application/json; charset=utf-8", body: data)
-        } catch { fail(error.localizedDescription) }
+        } catch { reject(status: 500, reason: "Transfer Failed", message: error.localizedDescription) }
     }
 
-    private func sendFileList() {
-        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles])) ?? []
+    private func sendFileList(headOnly: Bool) {
+        let keys: Set<URLResourceKey> = [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey]
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])) ?? []
         let objects: [[String: Any]] = files.compactMap { url in
             guard !url.lastPathComponent.hasSuffix(".part"),
-                  let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+                  let values = try? url.resourceValues(forKeys: keys),
+                  values.isRegularFile == true, values.isSymbolicLink != true,
                   let size = values.fileSize else { return nil }
             return ["name": url.lastPathComponent, "size": size]
         }
         let body = (try? JSONSerialization.data(withJSONObject: objects)) ?? Data("[]".utf8)
-        respond(status: 200, reason: "OK", type: "application/json; charset=utf-8", body: body)
+        respond(status: 200, reason: "OK", type: "application/json; charset=utf-8", body: body, headOnly: headOnly)
     }
 
-    private func sendFile(named value: String) {
-        let name = WasloraFiles.safeFilename(value)
-        guard let url = try? directory.appendingPathComponent(name).resolvingSymlinksInPath(),
+    private func sendFile(named name: String, headOnly: Bool) {
+        guard !name.isEmpty, name != ".", name != "..", !name.hasPrefix("."),
+              !name.hasSuffix(".part"), !name.contains("/"), !name.contains("\\") else {
+            respond(status: 404, reason: "Not Found", body: Data()); return
+        }
+        let candidate = directory.appendingPathComponent(name)
+        let url = candidate.resolvingSymlinksInPath()
+        guard let values = try? candidate.resourceValues(forKeys: [.isSymbolicLinkKey]),
+              values.isSymbolicLink != true,
               url.deletingLastPathComponent().standardizedFileURL == directory.standardizedFileURL,
               let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              attributes[.type] as? FileAttributeType == .typeRegular,
               let size = attributes[.size] as? NSNumber,
               let handle = try? FileHandle(forReadingFrom: url) else {
             respond(status: 404, reason: "Not Found", body: Data()); return
         }
+        downloadHandle = handle
+        downloadBytesRemaining = size.int64Value
         let ascii = name.unicodeScalars.map { CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-").contains($0) ? Character($0) : "_" }
-        let header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: \(size.int64Value)\r\nContent-Disposition: attachment; filename=\"\(String(ascii))\"\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n"
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")) ?? "file"
+        let header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: \(size.int64Value)\r\nContent-Disposition: attachment; filename=\"\(String(ascii))\"; filename*=UTF-8''\(encoded)\r\n\(Self.commonHeaders)\r\n"
         didRespond = true
         connection.send(content: Data(header.utf8), completion: .contentProcessed { [weak self] error in
-            guard let self else { try? handle.close(); return }
-            if let error { try? handle.close(); self.connection.cancel(); return }
-            self.stream(handle)
+            guard let self, !self.finished else { return }
+            if error != nil || headOnly { self.cancel(); return }
+            self.resetTimeout()
+            self.streamFile()
         })
     }
 
-    private func stream(_ handle: FileHandle) {
+    private func streamFile() {
+        guard !finished, let handle = downloadHandle else { return }
+        guard downloadBytesRemaining > 0 else {
+            connection.send(content: nil, isComplete: true, completion: .contentProcessed { [weak self] _ in self?.cancel() })
+            return
+        }
         do {
-            guard let chunk = try handle.read(upToCount: 512 * 1024), !chunk.isEmpty else {
-                try handle.close()
-                connection.send(content: nil, isComplete: true, completion: .contentProcessed { [weak self] _ in self?.connection.cancel() })
+            let count = Int(min(downloadBytesRemaining, 512 * 1024))
+            guard let chunk = try handle.read(upToCount: count), !chunk.isEmpty else {
+                cancel()
                 return
             }
+            downloadBytesRemaining -= Int64(chunk.count)
             connection.send(content: chunk, isComplete: false, completion: .contentProcessed { [weak self] error in
-                guard let self else { try? handle.close(); return }
-                if error != nil { try? handle.close(); self.connection.cancel() }
-                else { self.stream(handle) }
+                guard let self, !self.finished else { return }
+                if error != nil { self.cancel(); return }
+                self.resetTimeout()
+                self.streamFile()
             })
-        } catch { try? handle.close(); connection.cancel() }
+        } catch { cancel() }
     }
 
-    private func respond(status: Int, reason: String, type: String = "text/plain; charset=utf-8", body: Data) {
-        guard !didRespond else { return }
+    private static let commonHeaders =
+        "Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\nConnection: close\r\n"
+
+    private func respond(status: Int, reason: String, type: String = "text/plain; charset=utf-8", body: Data, headOnly: Bool = false) {
+        guard !finished, !didRespond else { return }
         didRespond = true
-        var response = Data("HTTP/1.1 \(status) \(reason)\r\nContent-Type: \(type)\r\nContent-Length: \(body.count)\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".utf8)
-        response.append(body)
-        connection.send(content: response, completion: .contentProcessed { [weak self] _ in self?.connection.cancel() })
+        var response = Data("HTTP/1.1 \(status) \(reason)\r\nContent-Type: \(type)\r\nContent-Length: \(body.count)\r\n\(Self.commonHeaders)\r\n".utf8)
+        if !headOnly { response.append(body) }
+        connection.send(content: response, isComplete: true, completion: .contentProcessed { [weak self] _ in self?.cancel() })
     }
 
-    private func fail(_ message: String) {
+    private func cleanupUpload() {
         try? uploadHandle?.close()
         uploadHandle = nil
         if let temporaryURL { try? FileManager.default.removeItem(at: temporaryURL) }
-        if !didRespond { respond(status: 500, reason: "Transfer Failed", body: Data(message.utf8)) }
-        else { connection.cancel() }
+        temporaryURL = nil
+    }
+
+    private func reject(status: Int, reason: String, message: String = "") {
+        cleanupUpload()
+        buffer.removeAll(keepingCapacity: false)
+        if !didRespond { respond(status: status, reason: reason, body: Data(message.utf8)) }
+        else { cancel() }
     }
 
     private static let page = #"""
