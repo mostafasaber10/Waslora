@@ -108,21 +108,36 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          device_app='build/ios-device/Build/Products/Release-iphoneos/Waslora.app'
+          report_packaging_error() {
+            local status="$1" line="$2" command="$3"
+            command="${command//'%'/'%25'}"
+            command="${command//$'\r'/'%0D'}"
+            command="${command//$'\n'/'%0A'}"
+            printf '::error title=IPA packaging failed::Line %s exited %s: %s\n' "$line" "$status" "$command"
+            exit "$status"
+          }
+          trap 'report_packaging_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
+          device_app="$GITHUB_WORKSPACE/build/ios-device/Build/Products/Release-iphoneos/Waslora.app"
+          ipa_output="$GITHUB_WORKSPACE/build/ios/Waslora-iOS-unsigned.ipa"
+          echo "::notice title=IPA device app::$device_app"
           device_platform=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$device_app/Info.plist")
+          echo "::notice title=IPA device platform::CFBundleSupportedPlatforms[0]=$device_platform"
           if [[ "$device_platform" != 'iPhoneOS' ]]; then
-            echo 'The IPA must contain an iPhoneOS device app, not a Simulator app.' >&2
+            echo '::error title=IPA device platform::The IPA must contain an iPhoneOS device app, not a Simulator app.'
             exit 1
           fi
           executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$device_app/Info.plist")
-          xcrun lipo -verify_arch arm64 "$device_app/$executable"
+          device_architectures=$(xcrun lipo -archs "$device_app/$executable")
+          echo "::notice title=IPA device architectures::$device_architectures"
+          xcrun lipo "$device_app/$executable" -verify_arch arm64
           package_root=$(mktemp -d "$RUNNER_TEMP/waslora-ipa.XXXXXX")
           trap 'rm -rf "$package_root"' EXIT
           mkdir -p "$package_root/Payload"
           ditto "$device_app" "$package_root/Payload/Waslora.app"
-          ditto -c -k --keepParent "$package_root/Payload" build/ios/Waslora-iOS-unsigned.ipa
-          unzip -t build/ios/Waslora-iOS-unsigned.ipa
-          (cd build/ios && shasum -a 256 Waslora-iOS-unsigned.ipa > Waslora-iOS-unsigned.ipa.sha256)
+          ditto -c -k --keepParent "$package_root/Payload" "$ipa_output"
+          unzip -t "$ipa_output"
+          (cd "$GITHUB_WORKSPACE/build/ios" && shasum -a 256 Waslora-iOS-unsigned.ipa > Waslora-iOS-unsigned.ipa.sha256)
+          echo '::notice title=IPA packaging::Unsigned iPhone IPA and SHA256 are ready.'
 
       - name: Save unsigned iPhone IPA (requires re-signing before installation)
         uses: actions/upload-artifact@v4
