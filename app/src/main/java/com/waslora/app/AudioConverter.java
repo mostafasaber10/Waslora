@@ -22,17 +22,22 @@ import java.util.concurrent.TimeUnit;
 public final class AudioConverter {
     public interface Callback {
         void onProgress(String message);
+        default void onProgress(String message, int percent) { onProgress(message); }
         void onComplete(File file);
         void onError(String message);
     }
 
     private static final ConcurrentHashMap<String, Mp3Session> MP3_SESSIONS = new ConcurrentHashMap<>();
     private static final int MP3_BITRATE_KBPS = 192;
+    // Allow slow devices to process large frames, but fail a genuinely stuck
+    // codec instead of leaving the conversion spinner running forever.
+    private static final long STALL_TIMEOUT_MS = 3 * 60 * 1000L;
 
     private AudioConverter() {}
 
     public static void convert(Context context, Uri source, String format, Callback callback) {
         new Thread(() -> {
+            callback.onProgress("جارٍ تجهيز الفيديو للتحويل…", -1);
             if ("mp3".equalsIgnoreCase(format)) {
                 if (!(context instanceof MainActivity)) {
                     callback.onError("تعذر تشغيل محرك MP3 في هذه الشاشة.");
@@ -103,6 +108,7 @@ public final class AudioConverter {
             if (mime == null) throw new Exception("تعذر تحديد ترميز الصوت داخل الفيديو.");
             int fallbackRate = getInt(inputFormat, MediaFormat.KEY_SAMPLE_RATE, 44100);
             int fallbackChannels = getInt(inputFormat, MediaFormat.KEY_CHANNEL_COUNT, 2);
+            long duration = getLong(inputFormat, MediaFormat.KEY_DURATION, -1);
             extractor.selectTrack(audioTrack);
             decoder = MediaCodec.createDecoderByType(mime);
             decoder.configure(inputFormat, null, null, 0);
@@ -117,6 +123,7 @@ public final class AudioConverter {
             int pcmEncoding = AudioFormat.ENCODING_PCM_16BIT;
             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
             long lastProgress = 0;
+            long lastActivity = System.currentTimeMillis();
 
             while (!outputEnded) {
                 if (!inputEnded) {
@@ -129,10 +136,17 @@ public final class AudioConverter {
                         if (size < 0) {
                             decoder.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
                             inputEnded = true;
+                            lastActivity = System.currentTimeMillis();
                         } else {
                             long time = extractor.getSampleTime();
+                            long now = System.currentTimeMillis();
+                            if (duration > 0 && now - lastProgress > 900) {
+                                session.progress("جارٍ استخراج الصوت وترميزه إلى MP3…", progressPercent(time, duration));
+                                lastProgress = now;
+                            }
                             decoder.queueInputBuffer(inputIndex, 0, size, Math.max(0, time), 0);
                             extractor.advance();
+                            lastActivity = System.currentTimeMillis();
                         }
                     }
                 }
@@ -147,6 +161,7 @@ public final class AudioConverter {
                     session.startEncoder(sampleRate, channels == 1 ? 1 : 2, MP3_BITRATE_KBPS);
                     encoderStarted = true;
                 } else if (outputIndex >= 0) {
+                    lastActivity = System.currentTimeMillis();
                     if (info.size > 0) {
                         if (!encoderStarted) {
                             ensureSupportedRate(sampleRate);
@@ -162,10 +177,13 @@ public final class AudioConverter {
                     decoder.releaseOutputBuffer(outputIndex, false);
                     if (eos) outputEnded = true;
                     long now = System.currentTimeMillis();
-                    if (now - lastProgress > 900) {
-                        session.progress("جارٍ استخراج الصوت وترميزه إلى MP3…");
+                    if (duration <= 0 && now - lastProgress > 900) {
+                        session.progress("جارٍ استخراج الصوت وترميزه إلى MP3…", -1);
                         lastProgress = now;
                     }
+                }
+                if (System.currentTimeMillis() - lastActivity > STALL_TIMEOUT_MS) {
+                    throw new Exception("توقف تحويل MP3؛ لم يتقدم محرك الصوت خلال 3 دقائق.");
                 }
             }
             if (!encoderStarted) {
@@ -226,8 +244,7 @@ public final class AudioConverter {
                 wroteSamples = true;
                 extractor.advance();
                 if (duration > 0 && time - lastReport > 2_000_000L) {
-                    int percent = (int) Math.min(99, (time * 100) / duration);
-                    callback.onProgress("استخراج M4A بسرعة من دون إعادة ترميز… " + percent + "%");
+                    callback.onProgress("استخراج M4A بسرعة من دون إعادة ترميز…", progressPercent(time, duration));
                     lastReport = time;
                 }
             }
@@ -285,7 +302,10 @@ public final class AudioConverter {
             boolean encoderEnded = false;
             boolean wroteSamples = false;
             long encodedFrames = 0;
+            long duration = getLong(trackFormat, MediaFormat.KEY_DURATION, -1);
+            long currentTime = 0;
             long lastProgress = 0;
+            long lastActivity = System.currentTimeMillis();
 
             while (!encoderEnded) {
                 if (!extractorEnded) {
@@ -298,9 +318,12 @@ public final class AudioConverter {
                         if (size < 0) {
                             decoder.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
                             extractorEnded = true;
+                            lastActivity = System.currentTimeMillis();
                         } else {
+                            currentTime = Math.max(currentTime, extractor.getSampleTime());
                             decoder.queueInputBuffer(inputIndex, 0, size, Math.max(0, extractor.getSampleTime()), 0);
                             extractor.advance();
+                            lastActivity = System.currentTimeMillis();
                         }
                     }
                 }
@@ -317,6 +340,7 @@ public final class AudioConverter {
                         encoderStarted = true;
                     }
                 } else if (decodedIndex >= 0) {
+                    lastActivity = System.currentTimeMillis();
                     if (decoderInfo.size > 0) {
                         if (!encoderStarted) {
                             encoder = createAacEncoder(sampleRate, channels);
@@ -367,6 +391,7 @@ public final class AudioConverter {
                         continue;
                     }
                     if (encodedIndex < 0) continue;
+                    lastActivity = System.currentTimeMillis();
                     if (encoderInfo.size > 0) {
                         ByteBuffer encoded = encoder.getOutputBuffer(encodedIndex);
                         if (encoded == null) throw new Exception("تعذر حفظ إطار الصوت.");
@@ -382,8 +407,12 @@ public final class AudioConverter {
                 }
                 long now = System.currentTimeMillis();
                 if (now - lastProgress > 900) {
-                    callback.onProgress("جارٍ إعادة ترميز الصوت إلى M4A…");
+                    callback.onProgress("جارٍ إعادة ترميز الصوت إلى M4A…",
+                            duration > 0 ? progressPercent(currentTime, duration) : -1);
                     lastProgress = now;
+                }
+                if (now - lastActivity > STALL_TIMEOUT_MS) {
+                    throw new Exception("توقف تحويل M4A؛ لم يتقدم محرك الصوت خلال 3 دقائق.");
                 }
             }
             if (!muxerStarted) throw new Exception("لم ينتج محرك الصوت ملفًا صالحًا.");
@@ -472,6 +501,17 @@ public final class AudioConverter {
         catch (Exception ignored) { return fallback; }
     }
 
+    private static long getLong(MediaFormat format, String key, long fallback) {
+        try { return format.containsKey(key) ? format.getLong(key) : fallback; }
+        catch (Exception ignored) { return fallback; }
+    }
+
+    private static int progressPercent(long positionUs, long durationUs) {
+        if (durationUs <= 0) return -1;
+        long percent = positionUs <= 0 ? 0 : (positionUs * 100L) / durationUs;
+        return (int) Math.max(0, Math.min(99, percent));
+    }
+
     private static String messageFor(Exception e) {
         String message = e.getMessage();
         if (message == null || message.isEmpty()) return "تعذر استخراج الصوت من هذا الفيديو.";
@@ -558,6 +598,7 @@ public final class AudioConverter {
         private boolean isCompleted() { synchronized (lock) { return completed; } }
 
         void progress(String message) { callback.onProgress(message); }
+        void progress(String message, int percent) { callback.onProgress(message, percent); }
 
         void accept(String encoded, boolean finished) {
             synchronized (lock) {

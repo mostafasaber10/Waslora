@@ -14,7 +14,15 @@ public final class PlatformDownloadQuality {
         if (height != 2160 && height != 1440 && height != 1080 && height != 720 && height != 480 && height != 360) {
             return "bv*+ba/b";
         }
-        return "bv*[height<=" + height + "]+ba/b[height<=" + height + "]";
+        // Use yt-dlp's video-only selector for the first branch.  `bv*` also
+        // matches an already muxed video+audio format; combining that with
+        // `ba` can make the whole expression fail on extractors that expose
+        // only muxed formats.  `bestvideo` keeps the merge deterministic and
+        // the `best[...]` branch handles platforms that do not expose
+        // separate audio/video streams.
+        // If a platform exposes no stream at or below the requested cap,
+        // fall back to its best muxable stream instead of failing the job.
+        return "bestvideo[height<=" + height + "]+bestaudio/best[height<=" + height + "]/bv*+ba/b";
     }
 
     public static boolean isDirectChoice(String quality) {

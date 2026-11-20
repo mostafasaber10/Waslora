@@ -24,6 +24,39 @@
   const showStatus = (id, text, error = false) => {
     const el = $(id); el.textContent = text; el.classList.remove('hidden','error'); if (error) el.classList.add('error');
   };
+  function showConversionProgress(message, percent) {
+    const wrap = $('convertProgressWrap');
+    const progress = $('convertProgress');
+    const value = Number.isFinite(Number(percent)) ? Number(percent) : -1;
+    wrap.classList.remove('hidden');
+    wrap.classList.toggle('indeterminate', value < 0);
+    if (value >= 0) {
+      progress.value = Math.max(0, Math.min(100, value));
+      progress.setAttribute('aria-valuenow', String(progress.value));
+      $('convertProgressValue').textContent = `${progress.value}%`;
+    } else {
+      progress.removeAttribute('aria-valuenow');
+      $('convertProgressValue').textContent = 'جارٍ العمل…';
+    }
+    $('pickVideo').disabled = true;
+    $('convertShared').disabled = true;
+    document.querySelectorAll('.convert-button').forEach((button) => { button.disabled = true; });
+    showStatus('convertStatus', message || 'جارٍ تحويل الفيديو إلى صوت…');
+  }
+  function finishConversion(message, error = false) {
+    $('pickVideo').disabled = false;
+    $('convertShared').disabled = false;
+    document.querySelectorAll('.convert-button').forEach((button) => { button.disabled = false; });
+    $('convertProgressWrap').classList.remove('indeterminate');
+    if (error) $('convertProgressWrap').classList.add('hidden');
+    else {
+      $('convertProgressWrap').classList.remove('hidden');
+      $('convertProgress').value = 100;
+      $('convertProgress').setAttribute('aria-valuenow', '100');
+      $('convertProgressValue').textContent = '100%';
+    }
+    showStatus('convertStatus', message, error);
+  }
   const nativeCall = (method, args, statusId = 'downloadStatus') => {
     if (!bridge || typeof bridge[method] !== 'function') {
       showStatus(statusId, 'تعذر الاتصال بمحرك Android. أغلق Waslora وافتحه من جديد، وإذا استمرت المشكلة أعد تثبيت أحدث نسخة.', true);
@@ -40,7 +73,7 @@
   $('downloadForm').addEventListener('submit', (event) => {
     event.preventDefault(); const url = $('videoUrl').value.trim();
     if (!url) return;
-    const quality = $('videoQuality').value || '1080';
+    const quality = $('videoQuality').value || 'best';
     try { localStorage.setItem('waslora-video-quality', quality); } catch (_) {}
     showStatus('downloadStatus', 'جارٍ فحص الرابط وبدء التنزيل…');
     nativeCall('downloadFromUrl', [url, quality]);
@@ -53,8 +86,12 @@
     button.classList.add('active'); activeFilter = button.dataset.filter || 'all'; loadFiles();
   }));
   $('refreshButton').addEventListener('click', () => { loadFiles(); nativeCall('refreshTransferStatus', []); });
-  $('pickVideo').addEventListener('click', () => nativeCall('pickVideo', [$('audioFormat').value], 'convertStatus'));
-  $('convertShared').addEventListener('click', () => nativeCall('convertShared', [$('audioFormat').value], 'convertStatus'));
+  $('pickVideo').addEventListener('click', () => {
+    if (!nativeCall('pickVideo', [$('audioFormat').value], 'convertStatus')) finishConversion('تعذر بدء اختيار الفيديو.', true);
+  });
+  $('convertShared').addEventListener('click', () => {
+    if (!nativeCall('convertShared', [$('audioFormat').value], 'convertStatus')) finishConversion('تعذر بدء تحويل الفيديو المستلَم.', true);
+  });
   $('startTransfer').addEventListener('click', () => {
     $('startTransfer').disabled = true;
     if (!nativeCall('startTransfer', [], 'transferSubheading')) $('startTransfer').disabled = false;
@@ -174,9 +211,9 @@
       }
       else if (type === 'file-error') showStatus('downloadStatus', payload.message || 'تعذر فتح الملف.', true);
       else if (type === 'download-message') showStatus('downloadStatus', payload.message || 'جارٍ التنزيل…');
-      else if (type === 'convert-progress') showStatus('convertStatus', payload.message);
-      else if (type === 'convert-complete') { showStatus('convertStatus', `اكتمل التحويل: ${payload.name} · ${payload.location || 'Download/Waslora'}`); loadFiles(); }
-      else if (type === 'convert-error') showStatus('convertStatus', payload.message, true);
+      else if (type === 'convert-progress') showConversionProgress(payload.message, payload.progress);
+      else if (type === 'convert-complete') { finishConversion(`اكتمل التحويل: ${payload.name} · ${payload.location || 'Download/Waslora'}`); loadFiles(); }
+      else if (type === 'convert-error') finishConversion(payload.message || 'تعذر تحويل الفيديو إلى صوت.', true);
       else if (type === 'audio-status') showStatus('downloadStatus', payload.message);
       else if (type === 'audio-error') showStatus('downloadStatus', payload.message, true);
       else if (type === 'shared-video') {

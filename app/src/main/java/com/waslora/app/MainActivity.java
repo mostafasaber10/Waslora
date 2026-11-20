@@ -139,6 +139,7 @@ public final class MainActivity extends Activity {
         String format = getSharedPreferences("waslora", MODE_PRIVATE).getString("audio_format", "m4a");
         AudioConverter.convert(this, uri, format, new AudioConverter.Callback() {
             @Override public void onProgress(String message) { emit("convert-progress", json("message", message)); }
+            @Override public void onProgress(String message, int percent) { emit("convert-progress", json("message", message, "progress", percent)); }
             @Override public void onComplete(File file) { emitConvertComplete(file); }
             @Override public void onError(String message) { emit("convert-error", json("message", message)); }
         });
@@ -297,6 +298,12 @@ public final class MainActivity extends Activity {
     private static String json(String key, String value) {
         JSONObject object = new JSONObject();
         try { object.put(key, value); } catch (Exception ignored) {}
+        return object.toString();
+    }
+
+    private static String json(String key, String value, String secondKey, int secondValue) {
+        JSONObject object = new JSONObject();
+        try { object.put(key, value); object.put(secondKey, secondValue); } catch (Exception ignored) {}
         return object.toString();
     }
 
@@ -522,6 +529,7 @@ public final class MainActivity extends Activity {
             getSharedPreferences("waslora", MODE_PRIVATE).edit().putString("audio_format", selectedFormat).apply();
             AudioConverter.convert(MainActivity.this, source, selectedFormat, new AudioConverter.Callback() {
                 @Override public void onProgress(String message) { emit("convert-progress", json("message", message)); }
+                @Override public void onProgress(String message, int percent) { emit("convert-progress", json("message", message, "progress", percent)); }
                 @Override public void onComplete(File file) {
                     pendingSharedVideo = null;
                     emitConvertComplete(file);
@@ -591,6 +599,7 @@ public final class MainActivity extends Activity {
         private AudioConverter.Callback converterCallback() {
             return new AudioConverter.Callback() {
                 @Override public void onProgress(String message) { emit("convert-progress", json("message", message)); }
+                @Override public void onProgress(String message, int percent) { emit("convert-progress", json("message", message, "progress", percent)); }
                 @Override public void onComplete(File file) { emitConvertComplete(file); }
                 @Override public void onError(String message) { emit("convert-error", json("message", message)); }
             };

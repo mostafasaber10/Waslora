@@ -48,15 +48,15 @@
         <div class="input-row"><input id="videoUrl" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="url" required><button class="primary" type="submit">تنزيل</button></div>
         <label class="quality-label" for="videoQuality">أقصى جودة للفيديو</label>
         <select id="videoQuality" class="quality-select">
-          <option value="best">أفضل جودة متاحة</option>
+          <option value="best" selected>أفضل جودة متاحة</option>
           <option value="2160">4K · 2160p أو أقل</option>
           <option value="1440">2K · 1440p أو أقل</option>
-          <option value="1080" selected>Full HD · 1080p أو أقل</option>
+          <option value="1080">Full HD · 1080p أو أقل</option>
           <option value="720">HD · 720p أو أقل</option>
           <option value="480">480p أو أقل</option>
           <option value="360">360p أو أقل</option>
         </select>
-        <p class="hint">يختار Waslora أعلى دقة متاحة حتى الحد الذي حددته، ويضم الصوت للفيديو تلقائيًا. روابط الملفات المباشرة تُحمّل بجودتها الأصلية.</p>
+        <p class="hint">يحاول Waslora تنزيل أعلى دقة حتى الحد الذي اخترته، ويعود إلى أفضل صيغة متاحة إذا لم توفر المنصة ذلك الاختيار حتى لا يتوقف التنزيل. روابط الملفات المباشرة تُحمّل بجودتها الأصلية.</p>
       </form>
       <div id="downloadStatus" class="status hidden" role="status"></div>
       <div id="downloadControls" class="download-controls hidden" aria-label="التحكم في التنزيل">
@@ -98,6 +98,10 @@
         <p class="hint">تحويل M4A يحافظ على الجودة والسرعة عندما يكون مسار الصوت متوافقًا. تحويل MP3 يعيد ترميز الصوت وقد يستغرق وقتًا أطول.</p>
       </div>
       <div id="convertStatus" class="status hidden" role="status"></div>
+      <div id="convertProgressWrap" class="conversion-progress hidden" aria-live="polite">
+        <div class="conversion-progress-head"><span>تقدم التحويل</span><strong id="convertProgressValue">0%</strong></div>
+        <progress id="convertProgress" max="100" value="0"></progress>
+      </div>
     </section>
 
     <section class="screen" id="screen-transfer">
